@@ -1,0 +1,4 @@
+{
+  "insert_structure": "sql_files/insertion_tables_queries/insert_structure.sql",
+  "build_extract_reco": "sql_files/extraction_queries/build_extract_reco.sql"
+}

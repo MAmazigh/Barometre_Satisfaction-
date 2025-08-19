@@ -1,0 +1,126 @@
+{
+  "N0_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N1_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N2_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N3_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N4_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N5_C_ENTITE": {
+    "sql_type": "varchar(18)",
+    "nullable": "NULL"
+  },
+  "N0_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N0_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N0_QUAR_PERF": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N0_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N0_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N1_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N1_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N1_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N1_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N2_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N2_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N2_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N2_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N3_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N3_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N3_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N3_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N4_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N4_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N4_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N4_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N5_RAPPORT": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N5_NIV_SUPP": {
+    "sql_type": "varchar(1)",
+    "nullable": "NULL"
+  },
+  "N5_L_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  },
+  "N5_LC_ENTITE": {
+    "sql_type": "varchar(100)",
+    "nullable": "NULL"
+  }
+}
