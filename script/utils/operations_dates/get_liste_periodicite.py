@@ -24,6 +24,12 @@ def get_liste_periodicite(periode: str) -> List[str]:
     mois = int(periode[-2:])
 
     # Définition des règles de périodicité
+    # - MONTH : toujours produit, quel que soit le mois
+    # - QUARTER : produit si le mois est divisible par 3 (fin de trimestre : mars, juin, septembre, décembre)
+    # - SEMIYEAR : produit si le mois est divisible par 6 (fin de semestre : juin, décembre)
+    # - PERIOD_SPECIFIC : produit uniquement en septembre (mois 9), pour des traitements spécifiques
+    # - YEAR : produit si le mois est décembre (mois 12), fin d’année
+
     periodicite_rules = {
         'MONTH': lambda m: True,
         'QUARTER': lambda m: m % 3 == 0,
