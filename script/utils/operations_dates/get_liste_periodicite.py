@@ -10,23 +10,30 @@ from typing import List, Dict
 from operations_dates import get_range_periodes
 
 
-def get_liste_periodicite(periode: str) -> List:
-    # Mois courant
-    # les 2 derniers caractères du paramètre periode (yyyymm) correspondent au mois courant
+def get_liste_periodicite(periode: str) -> List[str]:
+    """
+    Génère une liste de périodicités à produire en fonction du mois extrait du paramètre 'periode' (format 'yyyymm').
+
+    Args:
+        periode (str): Période au format 'yyyymm'.
+
+    Returns:
+        List[str]: Liste des périodicités à produire (ex: ['MONTH', 'QUARTER']).
+    """
+    # Extraction du mois courant
     mois = int(periode[-2:])
 
-    df_periodicite = pd.DataFrame(range(1, 13), columns=['month_num'])
-    df_periodicite['month'] = 1
-    df_periodicite['quarter'] = np.where(df_periodicite['month_num'] % 3 == 0, 1, 0)
-    df_periodicite['semiyear'] = np.where(df_periodicite['month_num'] % 6 == 0, 1, 0)
-    df_periodicite['period_specific'] = np.where(df_periodicite['month_num'] % 9 == 0, 1, 0)
-    df_periodicite['year'] = np.where(df_periodicite['month_num'] % 12 == 0, 1, 0)
-    df_periodicite.set_index('month_num', inplace=True)
-    # on applique un filtre booléen sur le mois en cours pour récupérer en liste les periodicités à produire
-    filtre_production = df_periodicite.loc[mois] > 0
-    serie_periodicite = df_periodicite.loc[mois][filtre_production]
-    periodicites = serie_periodicite.index.to_list()
-    liste_periodicite = [x[0].upper() for x in periodicites]
+    # Définition des règles de périodicité
+    periodicite_rules = {
+        'MONTH': lambda m: True,
+        'QUARTER': lambda m: m % 3 == 0,
+        'SEMIYEAR': lambda m: m % 6 == 0,
+        'PERIOD_SPECIFIC': lambda m: m % 9 == 0,
+        'YEAR': lambda m: m % 12 == 0
+    }
+
+    # Application des règles
+    liste_periodicite = [name[0] for name, rule in periodicite_rules.items() if rule(mois)]
 
     return liste_periodicite
 
