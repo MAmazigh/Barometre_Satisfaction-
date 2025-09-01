@@ -13,6 +13,7 @@ from get_paths import get_current_path, get_path
 from operations_dates import get_dict_periodicite, get_liste_periodicite
 from sql_operations import SqlOperations
 from sql_schema import get_schema_from_json
+from sql_utils import enrich_iterator_with_sql_fragments, process_extraction_page_queries
 from sqlalchemy import text
 from ordered_set import OrderedSet
 
@@ -51,19 +52,19 @@ class Barometre(SqlOperations):
 
     def run(self) -> None:
 
-        # print(f'Execute pre_production debut {datetime.datetime.now()}...........')
-        # self.pre_production()
-        # print(f'Execute pre_production fin {datetime.datetime.now()}...........')
-        # print(f'Execute extraction debut {datetime.datetime.now()}...........')
-        # self.extraction()
-        # print(f'Execute extraction fin {datetime.datetime.now()}...........')
-        # print(f'Execute calculs debut {datetime.datetime.now()}...........')
-        # self.calculs()
-        # print(f'Execute calculs fin {datetime.datetime.now()}...........')
+        print(f'Execute pre_production debut {datetime.datetime.now()}...........')
+        self.pre_production()
+        print(f'Execute pre_production fin {datetime.datetime.now()}...........')
+        print(f'Execute extraction debut {datetime.datetime.now()}...........')
+        self.extraction()
+        print(f'Execute extraction fin {datetime.datetime.now()}...........')
+        print(f'Execute calculs debut {datetime.datetime.now()}...........')
+        self.calculs()
+        print(f'Execute calculs fin {datetime.datetime.now()}...........')
         # Mise en forme et sortie sous excel-pdf-html ou à plat pour power bi ?
-        print(f'Execute restitution debut {datetime.datetime.now()}...........')
-        self.restitution()
-        print(f'Execute restitution fin {datetime.datetime.now()}...........')
+        # print(f'Execute restitution debut {datetime.datetime.now()}...........')
+        # self.restitution()
+        # print(f'Execute restitution fin {datetime.datetime.now()}...........')
 
     def pre_production(self):
         """
@@ -166,49 +167,64 @@ class Barometre(SqlOperations):
         return parameters_table
 
     def build_extraction_page2to9(self) -> None:
+        """
+            Méthode principale pour exécuter les extractions PostGreSQL des pages 2 à 9.
+
+            Args:
+                get_parameters_table: Fonction pour récupérer le DataFrame de paramétrage.
+                get_path_parameters: Fonction pour récupérer les chemins de fichiers.
+                sql_operations: Instance de SQLOperations contenant les méthodes read_query et execute_query.
+            """
         # We base our loops on a lookup table
+        # iterator = self.get_parameters_table(level=1)
+        # iterator['flag_mc'] = iterator.apply(
+        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' THEN 'MC'", axis=1)
+        #
+        # iterator['flag_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
+        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' THEN 'MP'", axis=1))
+        #
+        # iterator['flag_ap'] = iterator.apply(
+        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' THEN 'AP'", axis=1)
+        #
+        # iterator['where_mc'] = iterator.apply(
+        #     lambda row: f"date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' OR ", axis=1)
+        #
+        # iterator['where_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
+        #     lambda row: f"date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' OR ", axis=1))
+        #
+        # iterator['where_ap'] = iterator.apply(
+        #     lambda row: f"date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' ", axis=1)
+        #
+        # # defining path to query
+        # extraction_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'extraction_queries')
+        # # loop from 2 to 9
+        # for p in range(2, 10):
+        #     # read query and pass parameters
+        #     iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(extraction_queries_path,
+        #                                                                                   f'extraction_page{p}.sql',
+        #                                                                                   format=row.to_dict()), axis=1)
+        #     # then execute queries
+        #     for query in iterator['query'].values.tolist():
+        #         self.sql_operations.execute_query(query)
+        #     # pages 6 to 9 need two extractions of data for the rightness of results
+        #     # it is True only for the 3rd level
+        #     if p > 5:
+        #         # read query and pass parameters
+        #         iterator['query'] = np.where(iterator.niveau == 3, iterator.apply(
+        #             lambda row: self.sql_operations.read_query(extraction_queries_path,
+        #                                                        f'extraction_page{p}_mcv.sql',
+        #                                                        format=row.to_dict()), axis=1), '')
+        #         # then execute queries
+        #         for query in iterator['query'].values.tolist():
+        #             if query != '':
+        #                 self.sql_operations.execute_query(query)
         iterator = self.get_parameters_table(level=1)
-        iterator['flag_mc'] = iterator.apply(
-            lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' THEN 'MC'", axis=1)
+        iterator = enrich_iterator_with_sql_fragments(iterator)
 
-        iterator['flag_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
-            lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' THEN 'MP'", axis=1))
-
-        iterator['flag_ap'] = iterator.apply(
-            lambda row: f"WHEN date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' THEN 'AP'", axis=1)
-
-        iterator['where_mc'] = iterator.apply(
-            lambda row: f"date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' OR ", axis=1)
-
-        iterator['where_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
-            lambda row: f"date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' OR ", axis=1))
-
-        iterator['where_ap'] = iterator.apply(
-            lambda row: f"date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' ", axis=1)
-
-        # defining path to query
         extraction_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'extraction_queries')
-        # loop from 2 to 9
+
         for p in range(2, 10):
-            # read query and pass parameters
-            iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(extraction_queries_path,
-                                                                                          f'extraction_page{p}.sql',
-                                                                                          format=row.to_dict()), axis=1)
-            # then execute queries
-            for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
-            # pages 6 to 9 need two extractions of data for the rightness of results
-            # it is True only for the 3rd level
-            if p > 5:
-                # read query and pass parameters
-                iterator['query'] = np.where(iterator.niveau == 3, iterator.apply(
-                    lambda row: self.sql_operations.read_query(extraction_queries_path,
-                                                               f'extraction_page{p}_mcv.sql',
-                                                               format=row.to_dict()), axis=1), '')
-                # then execute queries
-                for query in iterator['query'].values.tolist():
-                    if query != '':
-                        self.sql_operations.execute_query(query)
+            process_extraction_page_queries(iterator, p, extraction_queries_path, self.sql_operations)
 
     def extraction(self):
         """
