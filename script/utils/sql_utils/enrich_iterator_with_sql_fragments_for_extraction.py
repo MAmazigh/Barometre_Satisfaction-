@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 
-def enrich_iterator_with_sql_fragments(iterator: pd.DataFrame) -> pd.DataFrame:
+def enrich_iterator_with_sql_fragments_for_extraction(iterator: pd.DataFrame) -> pd.DataFrame:
     """
 
     :rtype: object
