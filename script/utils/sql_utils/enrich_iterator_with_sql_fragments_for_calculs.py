@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 
-def enrich_iterator_with_sql_fragments_for_calculs(df: pd.DataFrame) -> pd.DataFrame:
+def enrich_iterator_with_sql_fragments_for_calculs(df: pd.DataFrame, seuil: int) -> pd.DataFrame:
     """
 
     :rtype: object
@@ -23,7 +23,7 @@ def enrich_iterator_with_sql_fragments_for_calculs(df: pd.DataFrame) -> pd.DataF
 
     # Enrichissement des colonnes SQL dynamiques
     iterator['freq'] = iterator['indic'].map(lambda x: f"freq_{x}")
-    iterator['threshold_NI_NS'] = self.threshold_NI_NS
+    iterator['threshold_NI_NS'] = seuil
     iterator['indicateur'] = iterator['indic'].map(lambda x: f"indicateur_{x}")
     iterator['fmt_evol'] = np.where(iterator.indic.isin(['MP', 'AP']), '', (
         ", CASE WHEN evol_indicateur < -1.96 THEN '-' "
