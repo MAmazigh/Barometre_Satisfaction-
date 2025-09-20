@@ -18,6 +18,7 @@ from sql_utils import enrich_iterator_with_sql_fragments_for_calculs
 from sqlalchemy import text
 from ordered_set import OrderedSet
 from concurrent.futures import ThreadPoolExecutor
+from itertools import chain
 
 
 class Barometre(SqlOperations):
@@ -287,46 +288,29 @@ class Barometre(SqlOperations):
 
     def build_format_calculs_page2to5(self) -> None:
         """
-        Exécute les requêtes de formatage des calculs pour les pages 2 à 5.
+        Exécute les requêtes de formatage des calculs pour les pages 2 à 5 en mode multithreadé.
         Utilise un DataFrame comme table de paramétrage enrichie dynamiquement.
         """
-        # df = self.get_parameters_table(level=1)
-        #
-        # # Ajout des indicateurs temporels (MC, MP, AP)
-        # df_indic = pd.DataFrame({'key': 0, 'indic': ['MC', 'MP', 'AP']})
-        # iterator = pd.merge(df, df_indic, on='key', how='outer')
-        #
-        # # Suppression de MP si la période est Y ou P
-        # mask = iterator.period.isin(['Y', 'P']) & (iterator.indic == 'MP')
-        # iterator = iterator[~mask]
-        #
-        # # Enrichissement des colonnes SQL dynamiques
-        # iterator['freq'] = iterator['indic'].map(lambda x: f"freq_{x}")
-        # iterator['threshold_NI_NS'] = self.threshold_NI_NS
-        # iterator['indicateur'] = iterator['indic'].map(lambda x: f"indicateur_{x}")
-        # iterator['fmt_evol'] = np.where(iterator.indic.isin(['MP', 'AP']), '', (
-        #     ", CASE WHEN evol_indicateur < -1.96 THEN '-' "
-        #     "WHEN evol_indicateur BETWEEN -1.96 AND 1.96 THEN '=' "
-        #     "WHEN evol_indicateur > 1.96 THEN '+' END as valeurs_e"
-        # ))
-        # iterator['kpi'] = np.where(iterator.indic.isin(['MP', 'AP']), ', kpi',
-        #                            ", CASE WHEN kpi in ('NI', 'NS') THEN kpi ELSE kpi||'|'||valeurs_e END as kpi")
-        # iterator['flag_periode'] = iterator['indic'].map(lambda x: f", '{x}' AS periode")
         df = self.get_parameters_table(level=1)
         iterator = enrich_iterator_with_sql_fragments_for_calculs(df, self.threshold_NI_NS)
-        # Chemin vers les requêtes SQL
         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
 
-        # Boucle sur les pages 2 à 5
         for p in range(2, 6):
-            # Lecture et exécution des blocs SQL de formatage
+            all_queries = []
+
+            # 1. Génération des requêtes de formatage (par ligne)
             for _, row in iterator.iterrows():
                 format_dict = row.to_dict()
-                queries = self.sql_operations.read_query_blocks(calculs_queries_path, f'formatage_evol_page{p}.sql',
-                                                                format=format_dict)
-                self.sql_operations.execute_queries(queries)
+                queries = self.sql_operations.read_query_blocks(
+                    calculs_queries_path, f'formatage_evol_page{p}.sql', format=format_dict
+                )
+                # On ajoute toutes les requêtes (liste) à la liste globale
+                if isinstance(queries, list):
+                    all_queries.extend(queries)
+                else:
+                    all_queries.append(queries)
 
-            # Construction des noms de tables intermédiaires
+            # 2. Construction des noms de tables intermédiaires
             iterator_for_output = iterator[['niveau', 'period', 'indic']].copy()
             iterator_for_output['output'] = iterator_for_output.apply(
                 lambda r: f"format_N{r.niveau}_{r.period}_{r.indic}_page{p}", axis=1
@@ -334,70 +318,113 @@ class Barometre(SqlOperations):
             pivot = iterator_for_output.pivot(index=['niveau', 'period'], columns='indic',
                                               values='output').reset_index()
 
-            # Requêtes de fusion des tables
+            # 3. Génération des requêtes de fusion et suppression
             pivot['query_union'] = pivot.apply(
                 lambda r: f"DROP TABLE IF EXISTS format_calculs_N{r.niveau}_{r.period}_page{p}; "
                           f"SELECT * INTO format_calculs_N{r.niveau}_{r.period}_page{p} FROM {r.MC} "
                           f"UNION ALL SELECT * FROM {r.MP} UNION ALL SELECT * FROM {r.AP};", axis=1
             )
-
-            # Requêtes de suppression des tables intermédiaires
             pivot['query_drop_temp'] = pivot.apply(
                 lambda r: f"DROP TABLE IF EXISTS {r.MC}, {r.MP}, {r.AP};", axis=1
             )
-
-            # Requêtes de suppression des tables d’entrée
             pivot['query_drop_input'] = pivot.apply(
                 lambda r: f"DROP TABLE IF EXISTS calculs_N{r.niveau}_{r.period}_page{p};", axis=1
             )
 
-            # Exécution des requêtes finales
+            # 4. Ajout des requêtes finales à la liste globale
             for col in ['query_union', 'query_drop_temp', 'query_drop_input']:
-                for query in pivot[col]:
-                    self.sql_operations.execute_queries([query])
+                all_queries.extend(pivot[col].tolist())
+
+            # 5. Exécution multithreadée de toutes les requêtes de la page
+            self.sql_operations.execute_queries(all_queries)
+
+    # def build_format_calculs_page6to9(self) -> None:
+    #     # We base our loops on a lookup table
+    #     for p in range(6, 10):
+    #         print(f'Execute build_format_calculs_page{p} debut...........')
+    #         iterator = self.get_parameters_table(level=2)
+    #         iterator['table_input'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}", axis=1)
+    #         iterator['table_output'] = iterator.apply(lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}",
+    #                                                   axis=1)
+    #         list_item_pct_p8 = "'item_03700', 'item_03910', 'item_03930', 'item_03940', 'item_03950', 'item_03960', " \
+    #                            "'item_03970' "
+    #         list_item_pct_p6 = " 'item_01300', 'item_01400' "
+    #         iterator['list_item_pct'] = np.where(p == 8, list_item_pct_p8, list_item_pct_p6)
+    #         iterator['threshold_NI_NS'] = self.threshold_NI_NS
+    #         # defining path to query
+    #         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
+    #
+    #         # read query and pass parameters
+    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations
+    #                                            .read_query_blocks(calculs_queries_path, f'formatage_evol_page6to9.sql',
+    #                                                        format=row.to_dict()), axis=1)
+    #         # then execute queries
+    #         for query in iterator['query'].values.tolist():
+    #             self.sql_operations.execute_queries(query)
+    #
+    #         # only level 3 products mcv fields
+    #         iterator = iterator.query(' niveau == 3 ').copy()
+    #         iterator['mcv'] = ', mode_contact_valide'
+    #         iterator['table_input_mcv'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}mcv",
+    #                                                      axis=1)
+    #         iterator['table_output_mcv'] = iterator.apply(
+    #             lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}mcv",
+    #             axis=1)
+    #         iterator['final_table'] = iterator.apply(
+    #             lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{p}",
+    #             axis=1)
+    #         # read query and pass parameters
+    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations
+    #                                            .read_query_blocks(calculs_queries_path, f'formatage_evol_page6to9mcv.sql',
+    #                                                        format=row.to_dict()), axis=1)
+    #         # then execute queries
+    #         for query in iterator['query'].values.tolist():
+    #             self.sql_operations.execute_queries(query)
 
     def build_format_calculs_page6to9(self) -> None:
-        # We base our loops on a lookup table
+        list_item_pct = {
+            8: "'item_03700', 'item_03910', 'item_03930', 'item_03940', 'item_03950', 'item_03960', 'item_03970'",
+            6: "'item_01300', 'item_01400'",
+            7: "'item_01300', 'item_01400'",
+            9: "'item_01300', 'item_01400'"
+        }
+        calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
+
         for p in range(6, 10):
             print(f'Execute build_format_calculs_page{p} debut...........')
+
             iterator = self.get_parameters_table(level=2)
-            iterator['table_input'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}", axis=1)
-            iterator['table_output'] = iterator.apply(lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}",
-                                                      axis=1)
-            list_item_pct_p8 = "'item_03700', 'item_03910', 'item_03930', 'item_03940', 'item_03950', 'item_03960', " \
-                               "'item_03970' "
-            list_item_pct_p6 = " 'item_01300', 'item_01400' "
-            iterator['list_item_pct'] = np.where(p == 8, list_item_pct_p8, list_item_pct_p6)
-            iterator['threshold_NI_NS'] = self.threshold_NI_NS
-            # defining path to query
-            calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
+            iterator = iterator.assign(
+                table_input="calculsa_N" + iterator['niveau'].astype(str) + "_" + iterator['period'] + f"_page{p}",
+                table_output="format_calculsa_N" + iterator['niveau'].astype(str) + "_" + iterator[
+                    'period'] + f"_page{p}",
+                list_item_pct=list_item_pct.get(p, "'item_01300', 'item_01400'"),
+                threshold_NI_NS=self.threshold_NI_NS
+            )
 
-            # read query and pass parameters
-            iterator['query'] = iterator.apply(lambda row: self.sql_operations
-                                               .read_query(calculs_queries_path, f'formatage_evol_page6to9.sql',
-                                                           format=row.to_dict()), axis=1)
-            # then execute queries
-            for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
+            # Génération des requêtes SQL
+            iterator['query'] = iterator.apply(
+                lambda row: self.sql_operations.read_query_blocks(
+                    calculs_queries_path, 'formatage_evol_page6to9.sql', format=row.to_dict()
+                ), axis=1
+            )
+            # Exécution multithreadée de toutes les requêtes d'un coup
+            self.sql_operations.execute_queries(iterator['query'].tolist())
 
-            # only level 3 products mcv fields
-            iterator = iterator.query(' niveau == 3 ').copy()
-            iterator['mcv'] = ', mode_contact_valide'
-            iterator['table_input_mcv'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}mcv",
-                                                         axis=1)
-            iterator['table_output_mcv'] = iterator.apply(
-                lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}mcv",
-                axis=1)
-            iterator['final_table'] = iterator.apply(
-                lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{p}",
-                axis=1)
-            # read query and pass parameters
-            iterator['query'] = iterator.apply(lambda row: self.sql_operations
-                                               .read_query(calculs_queries_path, f'formatage_evol_page6to9mcv.sql',
-                                                           format=row.to_dict()), axis=1)
-            # then execute queries
-            for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
+            # Niveau 3 uniquement
+            iterator3 = iterator[iterator['niveau'] == 3].copy()
+            iterator3 = iterator3.assign(
+                mcv=', mode_contact_valide',
+                table_input_mcv="calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
+                                f"_page{p}mcv",
+                table_output_mcv="format_calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
+                                 f"_page{p}mcv",
+                final_table="format_calculs_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
+                            f"_page{p}")
+
+            iterator3['query'] = iterator3.apply(lambda row: self.sql_operations.read_query_blocks(
+                calculs_queries_path, 'formatage_evol_page6to9mcv.sql', format=row.to_dict()), axis=1)
+            self.sql_operations.execute_queries(iterator3['query'].tolist())
 
     def build_format_calculs_page6to9_level5to4(self) -> None:
         # We base our loops on a lookup table this time on level instead of page
@@ -467,9 +494,9 @@ class Barometre(SqlOperations):
         self.build_format_calculs_page2to5()
         print('Execute build_format_calculs_page2to5 fin...........')
         # print('Execute build_format_calculs_page6to9 debut...........')
-        # self.build_format_calculs_page6to9()
+        self.build_format_calculs_page6to9()
         # self.build_format_calculs_page6to9_level5to4()
-        # print('Execute build_format_calculs_page6to9 fin...........')
+        print('Execute build_format_calculs_page6to9 fin...........')
 
     def build_restitution_threshold(self) -> None:
         # We pass the parameters and execute our queries from a lookup table
