@@ -385,6 +385,11 @@ class Barometre(SqlOperations):
     #         # then execute queries
     #         for query in iterator['query'].values.tolist():
     #             self.sql_operations.execute_queries(query)
+    def _collect_and_execute_queries(self, queries_col):
+        """Aplati une colonne de listes de requêtes et exécute tout en une fois."""
+        from itertools import chain
+        all_queries = list(chain.from_iterable(queries_col))
+        self.sql_operations.execute_queries(all_queries)
 
     def build_format_calculs_page6to9(self) -> None:
         list_item_pct = {
@@ -413,23 +418,27 @@ class Barometre(SqlOperations):
                     calculs_queries_path, 'formatage_evol_page6to9.sql', format=row.to_dict()
                 ), axis=1
             )
-            # Exécution multithreadée de toutes les requêtes d'un coup
-            self.sql_operations.execute_queries(iterator['query'].tolist())
+            # Utilisation de la fonction factorisée
+            self._collect_and_execute_queries(iterator['query'])
 
             # Niveau 3 uniquement
             iterator3 = iterator[iterator['niveau'] == 3].copy()
             iterator3 = iterator3.assign(
                 mcv=', mode_contact_valide',
-                table_input_mcv="calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
-                                f"_page{p}mcv",
-                table_output_mcv="format_calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
-                                 f"_page{p}mcv",
-                final_table="format_calculs_N" + iterator3['niveau'].astype(str) + "_" + iterator3['period'] +
-                            f"_page{p}")
+                table_input_mcv="calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3[
+                    'period'] + f"_page{p}mcv",
+                table_output_mcv="format_calculsa_N" + iterator3['niveau'].astype(str) + "_" + iterator3[
+                    'period'] + f"_page{p}mcv",
+                final_table="format_calculs_N" + iterator3['niveau'].astype(str) + "_" + iterator3[
+                    'period'] + f"_page{p}"
+            )
 
-            iterator3['query'] = iterator3.apply(lambda row: self.sql_operations.read_query_blocks(
-                calculs_queries_path, 'formatage_evol_page6to9mcv.sql', format=row.to_dict()), axis=1)
-            self.sql_operations.execute_queries(iterator3['query'].tolist())
+            iterator3['query'] = iterator3.apply(
+                lambda row: self.sql_operations.read_query_blocks(
+                    calculs_queries_path, 'formatage_evol_page6to9mcv.sql', format=row.to_dict()
+                ), axis=1
+            )
+            self._collect_and_execute_queries(iterator3['query'])
 
     def build_format_calculs_page6to9_level5to4(self) -> None:
         # We base our loops on a lookup table this time on level instead of page
@@ -498,7 +507,7 @@ class Barometre(SqlOperations):
         print('Execute build_format_calculs_page2to5 debut...........')
         self.build_format_calculs_page2to5()
         print('Execute build_format_calculs_page2to5 fin...........')
-        # print('Execute build_format_calculs_page6to9 debut...........')
+        print('Execute build_format_calculs_page6to9 debut...........')
         self.build_format_calculs_page6to9()
         # self.build_format_calculs_page6to9_level5to4()
         print('Execute build_format_calculs_page6to9 fin...........')
