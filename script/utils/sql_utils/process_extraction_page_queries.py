@@ -4,7 +4,6 @@
 """
 
 import pandas as pd
-import numpy as np
 
 
 def process_extraction_page_queries(iterator: pd.DataFrame, page: int, extraction_queries_path: str,
@@ -16,19 +15,20 @@ def process_extraction_page_queries(iterator: pd.DataFrame, page: int, extractio
         iterator (pd.DataFrame): DataFrame enrichi avec les paramètres.
         page (int): Numéro de la page (entre 2 et 9).
         extraction_queries_path (str): Chemin vers le dossier contenant les fichiers SQL.
-        sql_operations: Objet contenant les méthodes read_query et execute_query.
+        sql_operations: Objet contenant les méthodes read_query_blocks et execute_queries.
     """
-    iterator['query'] = iterator.apply(lambda row: sql_operations.read_query(
-        extraction_queries_path, f'extraction_page{page}.sql', format=row.to_dict()), axis=1)
 
-    for query in iterator['query'].dropna():
-        sql_operations.execute_query(query)
+    for _, row in iterator.iterrows():
+        format_dict = row.to_dict()
 
-    if page > 5:
-        iterator['query'] = np.where(iterator.niveau == 3, iterator.apply(
-            lambda row: sql_operations.read_query(
-                extraction_queries_path, f'extraction_page{page}_mcv.sql', format=row.to_dict()), axis=1), '')
+        # Extraction principale
+        queries = sql_operations.read_query_blocks(extraction_queries_path, f'extraction_page{page}.sql',
+                                                   format=format_dict)
+        sql_operations.execute_queries(queries)
 
-        for query in iterator['query']:
-            if query:
-                sql_operations.execute_query(query)
+        # Extraction complémentaire pour pages 6 à 9 et niveau 3
+        if page > 5 and row['niveau'] == 3:
+            queries_mcv = sql_operations.read_query_blocks(extraction_queries_path, f'extraction_page{page}_mcv.sql',
+                                                           format=format_dict)
+            sql_operations.execute_queries(queries_mcv)
+
