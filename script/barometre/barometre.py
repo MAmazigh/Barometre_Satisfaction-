@@ -275,8 +275,13 @@ class Barometre(SqlOperations):
         df = self.prepare_iterator(df, page, suffixe, mcv)
         df['query'] = self._generate_queries(df, page)
 
-        for query in df['query']:
-            self.sql_operations.execute_queries(query)
+        # Execution sequentielle des requêtes pas de multithreading ici
+        # for query in df['query']:
+        #     self.sql_operations.execute_queries(query)
+
+        # On aplatit toutes les listes de requêtes en une seule liste et on exécute
+        all_queries = list(chain.from_iterable(df['query']))
+        self.sql_operations.execute_queries(all_queries)
 
     def build_calculs_page6to9(self) -> None:
         with ThreadPoolExecutor(max_workers=4) as executor:
