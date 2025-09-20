@@ -13,7 +13,8 @@ from get_paths import get_current_path, get_path
 from operations_dates import get_dict_periodicite, get_liste_periodicite
 from sql_operations import SqlOperations
 from sql_schema import get_schema_from_json
-from sql_utils import enrich_iterator_with_sql_fragments, process_extraction_page_queries
+from sql_utils import enrich_iterator_with_sql_fragments_for_extraction, process_extraction_page_queries
+from sql_utils import enrich_iterator_with_sql_fragments_for_calculs
 from sqlalchemy import text
 from ordered_set import OrderedSet
 from concurrent.futures import ThreadPoolExecutor
@@ -174,51 +175,8 @@ class Barometre(SqlOperations):
                 get_path_parameters: Fonction pour récupérer les chemins de fichiers.
                 sql_operations: Instance de SQLOperations contenant les méthodes read_query et execute_query.
             """
-        # We base our loops on a lookup table
-        # iterator = self.get_parameters_table(level=1)
-        # iterator['flag_mc'] = iterator.apply(
-        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' THEN 'MC'", axis=1)
-        #
-        # iterator['flag_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
-        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' THEN 'MP'", axis=1))
-        #
-        # iterator['flag_ap'] = iterator.apply(
-        #     lambda row: f"WHEN date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' THEN 'AP'", axis=1)
-        #
-        # iterator['where_mc'] = iterator.apply(
-        #     lambda row: f"date_reponse BETWEEN '{row['debut_mc']}' AND '{row['fin_mc']}' OR ", axis=1)
-        #
-        # iterator['where_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', iterator.apply(
-        #     lambda row: f"date_reponse BETWEEN '{row['debut_mp']}' AND '{row['fin_mp']}' OR ", axis=1))
-        #
-        # iterator['where_ap'] = iterator.apply(
-        #     lambda row: f"date_reponse BETWEEN '{row['debut_ap']}' AND '{row['fin_ap']}' ", axis=1)
-        #
-        # # defining path to query
-        # extraction_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'extraction_queries')
-        # # loop from 2 to 9
-        # for p in range(2, 10):
-        #     # read query and pass parameters
-        #     iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(extraction_queries_path,
-        #                                                                                   f'extraction_page{p}.sql',
-        #                                                                                   format=row.to_dict()), axis=1)
-        #     # then execute queries
-        #     for query in iterator['query'].values.tolist():
-        #         self.sql_operations.execute_query(query)
-        #     # pages 6 to 9 need two extractions of data for the rightness of results
-        #     # it is True only for the 3rd level
-        #     if p > 5:
-        #         # read query and pass parameters
-        #         iterator['query'] = np.where(iterator.niveau == 3, iterator.apply(
-        #             lambda row: self.sql_operations.read_query(extraction_queries_path,
-        #                                                        f'extraction_page{p}_mcv.sql',
-        #                                                        format=row.to_dict()), axis=1), '')
-        #         # then execute queries
-        #         for query in iterator['query'].values.tolist():
-        #             if query != '':
-        #                 self.sql_operations.execute_query(query)
         iterator = self.get_parameters_table(level=1)
-        iterator = enrich_iterator_with_sql_fragments(iterator)
+        iterator = enrich_iterator_with_sql_fragments_for_extraction(iterator)
 
         extraction_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'extraction_queries')
 
@@ -329,78 +287,74 @@ class Barometre(SqlOperations):
 
     def build_format_calculs_page2to5(self) -> None:
         """
-        We base our loops on a lookup table
-        We need to include the 3 temporal flag of period : current 'MC', preceding 'MP', last year 'AP'
-        Pages 6 to 9 do not restitute preceding and last year periods MP and AP
-        :return:
+        Exécute les requêtes de formatage des calculs pour les pages 2 à 5.
+        Utilise un DataFrame comme table de paramétrage enrichie dynamiquement.
         """
-
+        # df = self.get_parameters_table(level=1)
+        #
+        # # Ajout des indicateurs temporels (MC, MP, AP)
+        # df_indic = pd.DataFrame({'key': 0, 'indic': ['MC', 'MP', 'AP']})
+        # iterator = pd.merge(df, df_indic, on='key', how='outer')
+        #
+        # # Suppression de MP si la période est Y ou P
+        # mask = iterator.period.isin(['Y', 'P']) & (iterator.indic == 'MP')
+        # iterator = iterator[~mask]
+        #
+        # # Enrichissement des colonnes SQL dynamiques
+        # iterator['freq'] = iterator['indic'].map(lambda x: f"freq_{x}")
+        # iterator['threshold_NI_NS'] = self.threshold_NI_NS
+        # iterator['indicateur'] = iterator['indic'].map(lambda x: f"indicateur_{x}")
+        # iterator['fmt_evol'] = np.where(iterator.indic.isin(['MP', 'AP']), '', (
+        #     ", CASE WHEN evol_indicateur < -1.96 THEN '-' "
+        #     "WHEN evol_indicateur BETWEEN -1.96 AND 1.96 THEN '=' "
+        #     "WHEN evol_indicateur > 1.96 THEN '+' END as valeurs_e"
+        # ))
+        # iterator['kpi'] = np.where(iterator.indic.isin(['MP', 'AP']), ', kpi',
+        #                            ", CASE WHEN kpi in ('NI', 'NS') THEN kpi ELSE kpi||'|'||valeurs_e END as kpi")
+        # iterator['flag_periode'] = iterator['indic'].map(lambda x: f", '{x}' AS periode")
         df = self.get_parameters_table(level=1)
-        # on ajoute le flag des periodes courante, precedente, année précédente sur lesquelles on bouclera
-        df_indic = pd.DataFrame(dict(key=0, indic=['MC', 'MP', 'AP']))
-        iterator = pd.merge(df, df_indic, on='key', how='outer')
-        # pas de periode precedente en production speciale ou annuelle
-        filtre_period = iterator.period.isin(['Y', 'P'])
-        filtre_indic = iterator.indic == 'MP'
-        iterator['indic'] = np.where(filtre_period & filtre_indic, '', iterator['indic'])
-        iterator = iterator.query(" indic !='' ")
-
-        iterator['freq'] = iterator.apply(lambda row: f"freq_{row['indic']}", axis=1)
-        iterator['threshold_NI_NS'] = self.threshold_NI_NS
-        iterator['indicateur'] = iterator.apply(lambda row: f"indicateur_{row['indic']}", axis=1)
-
-        iterator['fmt_evol'] = np.where(iterator.indic.isin(['MP', 'AP']), '',
-                                        ",CASE WHEN evol_indicateur < -1.96 THEN '-' "
-                                        "      WHEN evol_indicateur BETWEEN -1.96 AND 1.96 THEN '='"
-                                        "      WHEN evol_indicateur > 1.96 THEN '+' "
-                                        " END as valeurs_e")
-
-        iterator['kpi'] = np.where(iterator.indic.isin(['MP', 'AP']), ', kpi',
-                                   ", CASE WHEN kpi in ('NI', 'NS') THEN kpi ELSE kpi||'|'||valeurs_e END as kpi")
-
-        iterator['flag_periode'] = iterator.apply(lambda row: f", '{row.indic}' AS periode", axis=1)
-        # defining path to query
+        iterator = enrich_iterator_with_sql_fragments_for_calculs(df, self.threshold_NI_NS)
+        # Chemin vers les requêtes SQL
         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
 
-        # loop from level 2 to 5
+        # Boucle sur les pages 2 à 5
         for p in range(2, 6):
-            # We concatenate our table by periods (MC, MP, AP) in one table by level
-            cols_to_keep = ['niveau', 'period', 'indic']
-            iterator_for_output = iterator[cols_to_keep].copy()
+            # Lecture et exécution des blocs SQL de formatage
+            for _, row in iterator.iterrows():
+                format_dict = row.to_dict()
+                queries = self.sql_operations.read_query_blocks(calculs_queries_path, f'formatage_evol_page{p}.sql',
+                                                                format=format_dict)
+                self.sql_operations.execute_queries(queries)
+
+            # Construction des noms de tables intermédiaires
+            iterator_for_output = iterator[['niveau', 'period', 'indic']].copy()
             iterator_for_output['output'] = iterator_for_output.apply(
-                lambda row: f" format_N{row.niveau}_{row.period}_{row.indic}_page{p}", axis=1)
-            iterator_for_output = iterator_for_output.pivot_table(index=['niveau', 'period'], columns='indic',
-                                                                  values='output', aggfunc='max')
-            iterator_for_output.reset_index(inplace=True)
-            # reshape dataframe for final query output table
-            iterator_for_output['query'] = iterator_for_output.apply(
-                lambda row: f"DROP TABLE IF EXISTS format_calculs_N{row.niveau}_{row.period}_page{p}; " \
-                            f"SELECT * INTO format_calculs_N{row.niveau}_{row.period}_page{p} FROM {row.MC} " \
-                            f"UNION ALL SELECT * FROM {row.MP} UNION ALL SELECT * FROM {row.AP} ",
-                axis=1)
+                lambda r: f"format_N{r.niveau}_{r.period}_{r.indic}_page{p}", axis=1
+            )
+            pivot = iterator_for_output.pivot(index=['niveau', 'period'], columns='indic',
+                                              values='output').reset_index()
 
-            # cleaning tables
-            iterator_for_output['query_drop_table'] = iterator_for_output.apply(
-                lambda row: f" DROP TABLE IF EXISTS {row.MC}, {row.MP}, {row.AP} ;", axis=1)
-            iterator_for_output['query_drop_table_input'] = iterator_for_output.apply(
-                lambda row: f" DROP TABLE calculs_N{row.niveau}_{row.period}_page{p} ;", axis=1)
+            # Requêtes de fusion des tables
+            pivot['query_union'] = pivot.apply(
+                lambda r: f"DROP TABLE IF EXISTS format_calculs_N{r.niveau}_{r.period}_page{p}; "
+                          f"SELECT * INTO format_calculs_N{r.niveau}_{r.period}_page{p} FROM {r.MC} "
+                          f"UNION ALL SELECT * FROM {r.MP} UNION ALL SELECT * FROM {r.AP};", axis=1
+            )
 
-            # read query and pass parameters
-            iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(calculs_queries_path,
-                                                                                          f'formatage_evol_page{p}.sql',
-                                                                                          format=row.to_dict()), axis=1)
-            # then execute queries
-            for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
-            # Then execute union tables queries
-            for query in iterator_for_output['query'].values.tolist():
-                self.sql_operations.execute_query(query)
-            # Then execute drop table queries
-            for query in iterator_for_output['query_drop_table'].values.tolist():
-                self.sql_operations.execute_query(query)
-            # Finaly execute drop table input queries
-            for query in iterator_for_output['query_drop_table_input'].values.tolist():
-                self.sql_operations.execute_query(query)
+            # Requêtes de suppression des tables intermédiaires
+            pivot['query_drop_temp'] = pivot.apply(
+                lambda r: f"DROP TABLE IF EXISTS {r.MC}, {r.MP}, {r.AP};", axis=1
+            )
+
+            # Requêtes de suppression des tables d’entrée
+            pivot['query_drop_input'] = pivot.apply(
+                lambda r: f"DROP TABLE IF EXISTS calculs_N{r.niveau}_{r.period}_page{p};", axis=1
+            )
+
+            # Exécution des requêtes finales
+            for col in ['query_union', 'query_drop_temp', 'query_drop_input']:
+                for query in pivot[col]:
+                    self.sql_operations.execute_queries([query])
 
     def build_format_calculs_page6to9(self) -> None:
         # We base our loops on a lookup table
@@ -509,9 +463,9 @@ class Barometre(SqlOperations):
         self.build_calculs_page6to9()
         print('Execute build_calculs_page6to9 fin...........')
         # calculus of KPI and their evolutions
-        # print('Execute build_format_calculs_page2to5 debut...........')
-        # self.build_format_calculs_page2to5()
-        # print('Execute build_format_calculs_page2to5 fin...........')
+        print('Execute build_format_calculs_page2to5 debut...........')
+        self.build_format_calculs_page2to5()
+        print('Execute build_format_calculs_page2to5 fin...........')
         # print('Execute build_format_calculs_page6to9 debut...........')
         # self.build_format_calculs_page6to9()
         # self.build_format_calculs_page6to9_level5to4()
