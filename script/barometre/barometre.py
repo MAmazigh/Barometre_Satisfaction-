@@ -59,9 +59,9 @@ class Barometre(SqlOperations):
         print(f'Execute extraction debut {datetime.datetime.now()}...........')
         self.extraction()
         print(f'Execute extraction fin {datetime.datetime.now()}...........')
-        # print(f'Execute calculs debut {datetime.datetime.now()}...........')
-        # self.calculs()
-        # print(f'Execute calculs fin {datetime.datetime.now()}...........')
+        print(f'Execute calculs debut {datetime.datetime.now()}...........')
+        self.calculs()
+        print(f'Execute calculs fin {datetime.datetime.now()}...........')
         # Mise en forme et sortie sous excel-pdf-html ou à plat pour power bi ?
         # print(f'Execute restitution debut {datetime.datetime.now()}...........')
         # self.restitution()
@@ -268,12 +268,12 @@ class Barometre(SqlOperations):
 
             # Read and execute query
             calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-            iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(calculs_queries_path,
+            iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query_blocks(calculs_queries_path,
                                                                                           f'calculs_evol_page{page}.sql',
                                                                                           format=row.to_dict()), axis=1)
 
             for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
+                self.sql_operations.execute_queries(query)
 
     def prepare_iterator(self, df: pd.DataFrame, page: int, suffixe: str, mcv: str) -> pd.DataFrame:
         df['suffixe'] = suffixe
@@ -304,7 +304,7 @@ class Barometre(SqlOperations):
 
     def _generate_queries(self, df: pd.DataFrame, page: int) -> pd.Series:
         query_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-        return df.apply(lambda row: self.sql_operations.read_query(query_path,
+        return df.apply(lambda row: self.sql_operations.read_query_blocks(query_path,
                                                                    f'calculs_evol_page{page}.sql',
                                                                    format=row.to_dict()), axis=1)
 
@@ -317,7 +317,7 @@ class Barometre(SqlOperations):
         df['query'] = self._generate_queries(df, page)
 
         for query in df['query']:
-            self.sql_operations.execute_query(query)
+            self.sql_operations.execute_queries(query)
 
     def build_calculs_page6to9(self) -> None:
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -326,78 +326,6 @@ class Barometre(SqlOperations):
                 print(f'Execute _build_and_execute_calculs page{page} ...........')
                 executor.submit(self._build_and_execute_calculs, page, 3, 'mcv', ', mode_contact_valide')
                 executor.submit(self._build_and_execute_calculs, page, 2, '', '')
-
-    # def build_calculs_page6to9(self) -> None:
-    #     # We base our loops on a lookup table
-    #     for p in range(6, 10):
-    #         print(f'Execute build_calculs_page{p} ...........')
-    #         iterator = self.get_parameters_table(level=2)
-    #         iterator['suffixe'] = ''
-    #         iterator['mcv'] = ''
-    #         iterator['table_input'] = iterator.apply(lambda row: f"extraction_N{row.niveau}_{row.period}_page{p}",
-    #                                                  axis=1)
-    #
-    #         iterator['calcul_freq_mp'] = np.where(iterator.period.isin(['Y', 'P']), '',
-    #                                               iterator.apply(
-    #                                                   lambda row: f",SUM(CASE WHEN indic= 'MP' THEN freq END) "
-    #                                                               f"OVER (PARTITION BY N{row['niveau']}_C_ENTITE, "
-    #                                                               f"col_name ORDER BY N{row['niveau']}_C_ENTITE, "
-    #                                                               f"col_name) AS freq_MP ",
-    #                                                   axis=1))
-    #         iterator['calcul_indicateur_mp'] = np.where(iterator.period.isin(['Y', 'P']), '',
-    #                                                     iterator.apply(
-    #                                                         lambda row: f",SUM(CASE WHEN indic= 'MP' THEN indicateur "
-    #                                                                     f"END) OVER (PARTITION BY "
-    #                                                                     f" N{row['niveau']}_C_ENTITE, col_name "
-    #                                                                     f"ORDER BY N{row['niveau']}_C_ENTITE, col_name)"
-    #                                                                     f" AS indicateur_MP ",
-    #                                                         axis=1))
-    #         iterator['freq_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', ', d.freq_MP')
-    #
-    #         iterator['indicateur_mp'] = np.where(iterator.period.isin(['Y', 'P']), '', ', d.indicateur_MP')
-    #
-    #         # defining path to query
-    #         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-    #
-    #         # read query and pass parameters
-    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(calculs_queries_path,
-    #                                                                                       f'calculs_evol_page{p}.sql',
-    #                                                                                       format=row.to_dict()), axis=1)
-    #         # then execute queries
-    #         for query in iterator['query'].values.tolist():
-    #             self.sql_operations.execute_query(query)
-    #
-    #         # level 3 only product mcv
-    #         iterator = iterator.query(' niveau == 3 ').copy()
-    #         iterator['suffixe'] = 'mcv'
-    #         iterator['mcv'] = ', mode_contact_valide'
-    #         iterator['table_input'] = iterator.apply(lambda row: f"extraction_N{row.niveau}_{row.period}_page{p}_mcv",
-    #                                                  axis=1)
-    #         iterator['calcul_freq_mp'] = np.where(iterator.period.isin(['Y', 'P']), '',
-    #                                               iterator.apply(lambda
-    #                                                                  row: f",SUM(CASE WHEN indic= 'MP' THEN freq END) "
-    #                                                                       f"OVER (PARTITION BY "
-    #                                                                       f"N{row['niveau']}_C_ENTITE, "
-    #                                                                       f"mode_contact_valide, col_name "
-    #                                                                       f"ORDER BY N{row['niveau']}_C_ENTITE, "
-    #                                                                       f"mode_contact_valide, col_name) AS freq_MP ",
-    #                                                              axis=1))
-    #         iterator['calcul_indicateur_mp'] = np.where(iterator.period.isin(['Y', 'P']), '',
-    #                                                     iterator.apply(lambda row: f",SUM(CASE WHEN indic= 'MP' THEN "
-    #                                                                                f"indicateur END) OVER (PARTITION BY"
-    #                                                                                f" N{row['niveau']}_C_ENTITE, "
-    #                                                                                f"mode_contact_valide, col_name "
-    #                                                                                f"ORDER BY N{row['niveau']}_C_ENTITE"
-    #                                                                                f", mode_contact_valide, col_name) "
-    #                                                                                f"AS indicateur_MP ",
-    #                                                                    axis=1))
-    #
-    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query(calculs_queries_path,
-    #                                                                                       f'calculs_evol_page{p}.sql',
-    #                                                                                       format=row.to_dict()), axis=1)
-    #         # then execute queries
-    #         for query in iterator['query'].values.tolist():
-    #             self.sql_operations.execute_query(query)
 
     def build_format_calculs_page2to5(self) -> None:
         """
@@ -574,19 +502,9 @@ class Barometre(SqlOperations):
         valide
             :return:
             """
-        # print(f'Execute build_calculs_page2to5 debut...........')
-        # self.build_calculs_page2to5()
-        # # self.build_calculs_page2()
-        # print('Execute build_calculs_page2to5 fin...........')
-        # print(f'Execute build_calculs_page3 debut...........')
-        # self.build_calculs_page3()
-        # print('Execute build_calculs_page3 fin...........')
-        # print(f'Execute build_calculs_page4 debut...........')
-        # self.build_calculs_page4()
-        # print('Execute build_calculs_page4 fin...........')
-        # print(f'Execute build_calculs_page5 debut...........')
-        # self.build_calculs_page5()
-        # print('Execute build_calculs_page5 fin...........')
+        print(f'Execute build_calculs_page2to5 debut...........')
+        self.build_calculs_page2to5()
+        print('Execute build_calculs_page2to5 fin...........')
         print(f'Execute build_calculs_page6to9 debut...........')
         self.build_calculs_page6to9()
         print('Execute build_calculs_page6to9 fin...........')
