@@ -4,11 +4,6 @@ SELECT col_name, N{niveau}_C_ENTITE
             WHEN evol_indicateur BETWEEN -1.96 AND 1.96 THEN '='
 	        WHEN evol_indicateur > 1.96                 THEN '+'
         END as valeurs_e
-/*
-	  ,CAST(CASE WHEN freq_mc IN (NULL, 0)          THEN 'NI'
-	             WHEN freq_mc < {threshold_NI_NS}   THEN 'NS'
-	             ELSE CAST(ROUND(CAST(indicateur_mc AS numeric), 1) AS VARCHAR(4))
-	         END AS VARCHAR(4)) AS kpi */
       ,CAST(CASE WHEN freq_mc IN (NULL, 0)        THEN 'NI'
 	             WHEN freq_mc < {threshold_NI_NS} THEN 'NS'
 	             ELSE
