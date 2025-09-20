@@ -41,7 +41,6 @@ SELECT indic,N{niveau}_C_ENTITE, Q1,
 													                  ORDER BY N{niveau}_C_ENTITE, Q1) AS indicateur_MC
 	   {calcul_freq_mp}
        {calcul_indicateur_mp}
-
        ,SUM(CASE WHEN indic= 'AP' THEN freq END) OVER (partition by N{niveau}_C_ENTITE, Q1 
 													  ORDER BY N{niveau}_C_ENTITE, Q1) AS freq_AP
        ,SUM(CASE WHEN indic= 'AP' THEN indicateur END) OVER (partition by N{niveau}_C_ENTITE, Q1
