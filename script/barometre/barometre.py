@@ -269,15 +269,11 @@ class Barometre(SqlOperations):
 
     def _build_and_execute_calculs(self, page: int, niveau: int, suffixe: str, mcv: str) -> None:
         df = self.get_parameters_table(level=niveau).copy()
-        if niveau == 3:
-            df = df.query('niveau == 3')
+        if niveau == 2:  # filtre sur le niveau 3 uniquement
+            df = df.query('niveau == 3').copy()
 
         df = self.prepare_iterator(df, page, suffixe, mcv)
         df['query'] = self._generate_queries(df, page)
-
-        # Execution sequentielle des requêtes pas de multithreading ici
-        # for query in df['query']:
-        #     self.sql_operations.execute_queries(query)
 
         # On aplatit toutes les listes de requêtes en une seule liste et on exécute
         all_queries = list(chain.from_iterable(df['query']))
@@ -285,11 +281,12 @@ class Barometre(SqlOperations):
 
     def build_calculs_page6to9(self) -> None:
         with ThreadPoolExecutor(max_workers=4) as executor:
-            # for page in range(6, 10):
-            for page in range(6, 8):
+            for page in range(6, 10):
                 print(f'Execute _build_and_execute_calculs page{page} ...........')
-                executor.submit(self._build_and_execute_calculs, page, 3, 'mcv', ', mode_contact_valide')
-                executor.submit(self._build_and_execute_calculs, page, 2, '', '')
+                # On filtrera sur le niveau 3 uniquement pour avoir les mode de contact valide
+                executor.submit(self._build_and_execute_calculs, page, 2, 'mcv', ', mode_contact_valide')
+                # On calculera les niveau 5 à 2 (on entre niveau = 2) car on appliquera aucun filtre de niveau.
+                executor.submit(self._build_and_execute_calculs, page, 1, '', '')
 
     def build_format_calculs_page2to5(self) -> None:
         """
@@ -504,13 +501,13 @@ class Barometre(SqlOperations):
         self.build_calculs_page6to9()
         print('Execute build_calculs_page6to9 fin...........')
         # calculus of KPI and their evolutions
-        print('Execute build_format_calculs_page2to5 debut...........')
-        self.build_format_calculs_page2to5()
-        print('Execute build_format_calculs_page2to5 fin...........')
-        print('Execute build_format_calculs_page6to9 debut...........')
-        self.build_format_calculs_page6to9()
-        # self.build_format_calculs_page6to9_level5to4()
-        print('Execute build_format_calculs_page6to9 fin...........')
+        # print('Execute build_format_calculs_page2to5 debut...........')
+        # self.build_format_calculs_page2to5()
+        # print('Execute build_format_calculs_page2to5 fin...........')
+        # print('Execute build_format_calculs_page6to9 debut...........')
+        # self.build_format_calculs_page6to9()
+        # # self.build_format_calculs_page6to9_level5to4()
+        # print('Execute build_format_calculs_page6to9 fin...........')
 
     def build_restitution_threshold(self) -> None:
         # We pass the parameters and execute our queries from a lookup table
