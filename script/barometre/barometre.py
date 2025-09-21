@@ -395,51 +395,108 @@ class Barometre(SqlOperations):
             )
             self._collect_and_execute_queries(iterator3['query'])
 
+    # def build_format_calculs_page6to9_level5to4(self) -> None:
+    #     # We base our loops on a lookup table this time on level instead of page
+    #     for level in range(5, 3, -1):
+    #         iterator = self.get_parameters_table(level=2)
+    #         # we add page 6 to 9 as field in the dataframe to pass them in our parameters
+    #         df_page = pd.DataFrame(dict(key=0, page=range(6, 10)))
+    #         iterator = pd.merge(iterator, df_page, on='key', how='outer')
+    #
+    #         iterator = iterator.query(f' niveau == {level} ').copy()
+    #         iterator['niveau_inf'] = iterator['niveau'] - 1
+    #         dict_prefix = {5: 'format_calculsa', 4: 'format_calculs'}
+    #         iterator['table_input_niveau_inf'] = iterator.apply(
+    #             lambda row: f"{dict_prefix[level]}_N{row.niveau_inf}_{row.period}_page{row.page}", axis=1)
+    #         iterator['table_input'] = iterator.apply(
+    #             lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{row.page}", axis=1)
+    #         iterator['table_output'] = iterator.apply(
+    #             lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{row.page}", axis=1)
+    #
+    #         # prepare parameters to pass to the query based on reference table
+    #         tab_ref = pd.read_sql_query(text(f"select * from tab_ref_n{level} order by tri;"), self.connexion)
+    #         tab_ref['rename_var'] = 'var_' + (tab_ref['tri'] + tab_ref['tri'].max()).astype(str)
+    #         tab_ref['var_partition_by'] = tab_ref.apply(
+    #             lambda row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, "
+    #                         f" col_name) as {row.rename_var}", axis=1)
+    #         tab_ref['var_transposed'] = ',t.' + tab_ref['rename_var']
+    #         #  with set() we get the random position of the items therefore we'll use OrderedSet from ordered_set lib
+    #         iterator['list_var_partition_by'] = ''.join(OrderedSet(tab_ref['var_partition_by']))
+    #         iterator['list_var_transposed'] = ''.join(OrderedSet(tab_ref['var_transposed']))
+    #         # defining path to query
+    #         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
+    #         # read query and pass parameters
+    #         iterator['query'] = (iterator
+    #                              .apply(lambda row: self.sql_operations
+    #                                     .read_query(calculs_queries_path,
+    #                                                 f'formatage_evol_page6to9_level5to4.sql',
+    #                                                 format=row.to_dict()), axis=1)
+    #                              )
+    #         iterator['query_drop_table_input'] = iterator.apply(
+    #             lambda row: f" DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{row.page} ;", axis=1)
+    #         # then execute queries
+    #         for query in iterator['query'].values.tolist():
+    #             self.sql_operations.execute_query(query)
+    #         # execute drop tables
+    #         for query in iterator['query_drop_table_input'].values.tolist():
+    #             self.sql_operations.execute_query(query)
+
+    def _prepare_iterator(self, level):
+        iterator = self.get_parameters_table(level=2)
+        # we add page 6 to 9 as field in the dataframe to pass them in our parameters
+        df_page = pd.DataFrame(dict(key=0, page=range(6, 10)))
+        iterator = pd.merge(iterator, df_page, on='key', how='outer')
+        iterator = iterator.query(f'niveau == {level}').copy()
+        iterator['niveau_inf'] = iterator['niveau'] - 1
+        dict_prefix = {5: 'format_calculsa', 4: 'format_calculs'}
+        iterator['table_input_niveau_inf'] = iterator.apply(
+            lambda row: f"{dict_prefix[level]}_N{row.niveau_inf}_{row.period}_page{row.page}", axis=1)
+        iterator['table_input'] = iterator.apply(
+            lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{row.page}", axis=1)
+        iterator['table_output'] = iterator.apply(
+            lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{row.page}", axis=1)
+        return iterator
+
+    def _get_tab_ref(self, level):
+        tab_ref = pd.read_sql_query(text(f"select * from tab_ref_n{level} order by tri;"), self.connexion)
+        tab_ref['rename_var'] = 'var_' + (tab_ref['tri'] + tab_ref['tri'].max()).astype(str)
+        tab_ref['var_partition_by'] = tab_ref.apply(
+            lambda
+                row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, col_name) as {row.rename_var}",
+            axis=1)
+        tab_ref['var_transposed'] = ',t.' + tab_ref['rename_var']
+        return tab_ref
+
+    @staticmethod
+    def _add_partition_vars(iterator, tab_ref):
+        #  with set() we get a random position of the items therefore we'll use OrderedSet from the ordered_set lib
+        iterator['list_var_partition_by'] = ''.join(OrderedSet(tab_ref['var_partition_by']))
+        iterator['list_var_transposed'] = ''.join(OrderedSet(tab_ref['var_transposed']))
+        return iterator
+
     def build_format_calculs_page6to9_level5to4(self) -> None:
-        # We base our loops on a lookup table this time on level instead of page
         for level in range(5, 3, -1):
-            iterator = self.get_parameters_table(level=2)
-            # we add page 6 to 9 as field in the dataframe to pass them in our parameters
-            df_page = pd.DataFrame(dict(key=0, page=range(6, 10)))
-            iterator = pd.merge(iterator, df_page, on='key', how='outer')
-
-            iterator = iterator.query(f' niveau == {level} ').copy()
-            iterator['niveau_inf'] = iterator['niveau'] - 1
-            dict_prefix = {5: 'format_calculsa', 4: 'format_calculs'}
-            iterator['table_input_niveau_inf'] = iterator.apply(
-                lambda row: f"{dict_prefix[level]}_N{row.niveau_inf}_{row.period}_page{row.page}", axis=1)
-            iterator['table_input'] = iterator.apply(
-                lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{row.page}", axis=1)
-            iterator['table_output'] = iterator.apply(
-                lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{row.page}", axis=1)
-
+            iterator = self._prepare_iterator(level)
             # prepare parameters to pass to the query based on reference table
-            tab_ref = pd.read_sql_query(text(f"select * from tab_ref_n{level} order by tri;"), self.connexion)
-            tab_ref['rename_var'] = 'var_' + (tab_ref['tri'] + tab_ref['tri'].max()).astype(str)
-            tab_ref['var_partition_by'] = tab_ref.apply(
-                lambda row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, "
-                            f" col_name) as {row.rename_var}", axis=1)
-            tab_ref['var_transposed'] = ',t.' + tab_ref['rename_var']
-            #  with set() we get the random position of the items therefore we'll use OrderedSet from ordered_set lib
-            iterator['list_var_partition_by'] = ''.join(OrderedSet(tab_ref['var_partition_by']))
-            iterator['list_var_transposed'] = ''.join(OrderedSet(tab_ref['var_transposed']))
-            # defining path to query
+            tab_ref = self._get_tab_ref(level)
+            iterator = self._add_partition_vars(iterator, tab_ref)
             calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-            # read query and pass parameters
-            iterator['query'] = (iterator
-                                 .apply(lambda row: self.sql_operations
-                                        .read_query(calculs_queries_path,
-                                                    f'formatage_evol_page6to9_level5to4.sql',
-                                                    format=row.to_dict()), axis=1)
-                                 )
+            iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query_blocks(
+                    calculs_queries_path,
+                    'formatage_evol_page6to9_level5to4.sql',
+                    format=row.to_dict()
+                ), axis=1
+            )
             iterator['query_drop_table_input'] = iterator.apply(
-                lambda row: f" DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{row.page} ;", axis=1)
-            # then execute queries
-            for query in iterator['query'].values.tolist():
-                self.sql_operations.execute_query(query)
-            # execute drop tables
-            for query in iterator['query_drop_table_input'].values.tolist():
-                self.sql_operations.execute_query(query)
+                lambda row: f"DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{row.page};", axis=1
+            )
+            # On aplatit toutes les listes de requêtes en une seule liste et on exécute
+            all_queries = list(chain.from_iterable(iterator['query']))
+            print(all_queries)
+            self.sql_operations.execute_queries(all_queries)
+
+            all_drop_queries = list(chain.from_iterable(iterator['query_drop_table_input']))
+            self.sql_operations.execute_queries(all_drop_queries)
 
     def calculs(self):
         """
@@ -464,8 +521,11 @@ class Barometre(SqlOperations):
         print('Execute build_format_calculs_page2to5 fin...........')
         print('Execute build_format_calculs_page6to9 debut...........')
         self.build_format_calculs_page6to9()
-        self.build_format_calculs_page6to9_level5to4()
         print('Execute build_format_calculs_page6to9 fin...........')
+        print('Execute build_format_calculs_page6to9_level5to4 debut...........')
+        self.build_format_calculs_page6to9_level5to4()
+        print('Execute build_format_calculs_page6to9_level5to4 fin...........')
+
 
     def build_restitution_threshold(self) -> None:
         # We pass the parameters and execute our queries from a lookup table
