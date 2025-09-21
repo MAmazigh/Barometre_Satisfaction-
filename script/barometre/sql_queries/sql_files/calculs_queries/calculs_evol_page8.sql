@@ -90,7 +90,6 @@ VALUES
 (c.n_item_03950, c.pct_item_03950, c.pct_item_03950, 'item_03950'),
 (c.n_item_03960, c.pct_item_03960, c.pct_item_03960, 'item_03960'),
 (c.n_item_03970, c.pct_item_03970, c.pct_item_03970, 'item_03970')
-
 ) as cjl (Freq, Std, indicateur, col_name)
 ORDER BY N{niveau}_c_entite {mcv}, col_name, indic
 ),
