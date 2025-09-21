@@ -340,48 +340,6 @@ class Barometre(SqlOperations):
             # 5. Exécution multithreadée de toutes les requêtes de la page
             self.sql_operations.execute_queries(all_queries)
 
-    # def build_format_calculs_page6to9(self) -> None:
-    #     # We base our loops on a lookup table
-    #     for p in range(6, 10):
-    #         print(f'Execute build_format_calculs_page{p} debut...........')
-    #         iterator = self.get_parameters_table(level=2)
-    #         iterator['table_input'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}", axis=1)
-    #         iterator['table_output'] = iterator.apply(lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}",
-    #                                                   axis=1)
-    #         list_item_pct_p8 = "'item_03700', 'item_03910', 'item_03930', 'item_03940', 'item_03950', 'item_03960', " \
-    #                            "'item_03970' "
-    #         list_item_pct_p6 = " 'item_01300', 'item_01400' "
-    #         iterator['list_item_pct'] = np.where(p == 8, list_item_pct_p8, list_item_pct_p6)
-    #         iterator['threshold_NI_NS'] = self.threshold_NI_NS
-    #         # defining path to query
-    #         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-    #
-    #         # read query and pass parameters
-    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations
-    #                                            .read_query_blocks(calculs_queries_path, f'formatage_evol_page6to9.sql',
-    #                                                        format=row.to_dict()), axis=1)
-    #         # then execute queries
-    #         for query in iterator['query'].values.tolist():
-    #             self.sql_operations.execute_queries(query)
-    #
-    #         # only level 3 products mcv fields
-    #         iterator = iterator.query(' niveau == 3 ').copy()
-    #         iterator['mcv'] = ', mode_contact_valide'
-    #         iterator['table_input_mcv'] = iterator.apply(lambda row: f"calculsa_N{row.niveau}_{row.period}_page{p}mcv",
-    #                                                      axis=1)
-    #         iterator['table_output_mcv'] = iterator.apply(
-    #             lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{p}mcv",
-    #             axis=1)
-    #         iterator['final_table'] = iterator.apply(
-    #             lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{p}",
-    #             axis=1)
-    #         # read query and pass parameters
-    #         iterator['query'] = iterator.apply(lambda row: self.sql_operations
-    #                                            .read_query_blocks(calculs_queries_path, f'formatage_evol_page6to9mcv.sql',
-    #                                                        format=row.to_dict()), axis=1)
-    #         # then execute queries
-    #         for query in iterator['query'].values.tolist():
-    #             self.sql_operations.execute_queries(query)
     def _collect_and_execute_queries(self, queries_col):
         """Aplati une colonne de listes de requêtes et exécute tout en une fois."""
         from itertools import chain
@@ -501,13 +459,13 @@ class Barometre(SqlOperations):
         self.build_calculs_page6to9()
         print('Execute build_calculs_page6to9 fin...........')
         # calculus of KPI and their evolutions
-        # print('Execute build_format_calculs_page2to5 debut...........')
-        # self.build_format_calculs_page2to5()
-        # print('Execute build_format_calculs_page2to5 fin...........')
-        # print('Execute build_format_calculs_page6to9 debut...........')
-        # self.build_format_calculs_page6to9()
-        # # self.build_format_calculs_page6to9_level5to4()
-        # print('Execute build_format_calculs_page6to9 fin...........')
+        print('Execute build_format_calculs_page2to5 debut...........')
+        self.build_format_calculs_page2to5()
+        print('Execute build_format_calculs_page2to5 fin...........')
+        print('Execute build_format_calculs_page6to9 debut...........')
+        self.build_format_calculs_page6to9()
+        self.build_format_calculs_page6to9_level5to4()
+        print('Execute build_format_calculs_page6to9 fin...........')
 
     def build_restitution_threshold(self) -> None:
         # We pass the parameters and execute our queries from a lookup table
