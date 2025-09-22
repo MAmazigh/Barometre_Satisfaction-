@@ -138,6 +138,10 @@ class SqlOperations(SqlConnection):
                 ' '.join(block.replace('\n', ' ').split()).format(**format)
                 for block in blocks if block.strip()
             ]
+
+            # return [block.strip().format(**format) for block in raw.split("\n\n") if block.strip()]
+
+
         except Exception as e:
             print(f'Erreur lors de la lecture des blocs SQL : {query_name}')
             print(e)
