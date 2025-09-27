@@ -359,6 +359,8 @@ class Barometre(SqlOperations):
             print(f'Execute build_format_calculs_page{p} debut...........')
 
             iterator = self.get_parameters_table(level=2)
+            # Les appels à apply sont coûteux sur les gros DataFrames.
+            # On utilise des opérations vectorisées avec la fonction assign quand c’est possible.
             iterator = iterator.assign(
                 table_input="calculsa_N" + iterator['niveau'].astype(str) + "_" + iterator['period'] + f"_page{p}",
                 table_output="format_calculsa_N" + iterator['niveau'].astype(str) + "_" + iterator[
@@ -373,8 +375,9 @@ class Barometre(SqlOperations):
                     calculs_queries_path, 'formatage_evol_page6to9.sql', format=row.to_dict()
                 ), axis=1
             )
-            # Utilisation de la fonction factorisée
+            # Fonction factorisée qui aplatit une colonne de listes de requêtes et exécute tout en une fois
             self._collect_and_execute_queries(iterator['query'])
+
 
             # Niveau 3 uniquement
             iterator3 = iterator[iterator['niveau'] == 3].copy()
@@ -395,66 +398,32 @@ class Barometre(SqlOperations):
             )
             self._collect_and_execute_queries(iterator3['query'])
 
-    # def build_format_calculs_page6to9_level5to4(self) -> None:
-    #     # We base our loops on a lookup table this time on level instead of page
-    #     for level in range(5, 3, -1):
-    #         iterator = self.get_parameters_table(level=2)
-    #         # we add page 6 to 9 as field in the dataframe to pass them in our parameters
-    #         df_page = pd.DataFrame(dict(key=0, page=range(6, 10)))
-    #         iterator = pd.merge(iterator, df_page, on='key', how='outer')
-    #
-    #         iterator = iterator.query(f' niveau == {level} ').copy()
-    #         iterator['niveau_inf'] = iterator['niveau'] - 1
-    #         dict_prefix = {5: 'format_calculsa', 4: 'format_calculs'}
-    #         iterator['table_input_niveau_inf'] = iterator.apply(
-    #             lambda row: f"{dict_prefix[level]}_N{row.niveau_inf}_{row.period}_page{row.page}", axis=1)
-    #         iterator['table_input'] = iterator.apply(
-    #             lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{row.page}", axis=1)
-    #         iterator['table_output'] = iterator.apply(
-    #             lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{row.page}", axis=1)
-    #
-    #         # prepare parameters to pass to the query based on reference table
-    #         tab_ref = pd.read_sql_query(text(f"select * from tab_ref_n{level} order by tri;"), self.connexion)
-    #         tab_ref['rename_var'] = 'var_' + (tab_ref['tri'] + tab_ref['tri'].max()).astype(str)
-    #         tab_ref['var_partition_by'] = tab_ref.apply(
-    #             lambda row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, "
-    #                         f" col_name) as {row.rename_var}", axis=1)
-    #         tab_ref['var_transposed'] = ',t.' + tab_ref['rename_var']
-    #         #  with set() we get the random position of the items therefore we'll use OrderedSet from ordered_set lib
-    #         iterator['list_var_partition_by'] = ''.join(OrderedSet(tab_ref['var_partition_by']))
-    #         iterator['list_var_transposed'] = ''.join(OrderedSet(tab_ref['var_transposed']))
-    #         # defining path to query
-    #         calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
-    #         # read query and pass parameters
-    #         iterator['query'] = (iterator
-    #                              .apply(lambda row: self.sql_operations
-    #                                     .read_query(calculs_queries_path,
-    #                                                 f'formatage_evol_page6to9_level5to4.sql',
-    #                                                 format=row.to_dict()), axis=1)
-    #                              )
-    #         iterator['query_drop_table_input'] = iterator.apply(
-    #             lambda row: f" DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{row.page} ;", axis=1)
-    #         # then execute queries
-    #         for query in iterator['query'].values.tolist():
-    #             self.sql_operations.execute_query(query)
-    #         # execute drop tables
-    #         for query in iterator['query_drop_table_input'].values.tolist():
-    #             self.sql_operations.execute_query(query)
-
     def _prepare_iterator(self, level):
+        # Récupération des paramètres de niveau 5 à 3
         iterator = self.get_parameters_table(level=2)
+
         # we add page 6 to 9 as field in the dataframe to pass them in our parameters
-        df_page = pd.DataFrame(dict(key=0, page=range(6, 10)))
+        df_page = pd.DataFrame({'key': 0, 'page': range(6, 10)})
+        df_page['page'] = df_page['page'].astype(str)  # ou .str.zfill(2) si on veut '06', '07', etc.
         iterator = pd.merge(iterator, df_page, on='key', how='outer')
+
+        # Filtrage sur le niveau demandé
         iterator = iterator.query(f'niveau == {level}').copy()
-        iterator['niveau_inf'] = iterator['niveau'] - 1
+
+        # Préfixes selon le niveau
         dict_prefix = {5: 'format_calculsa', 4: 'format_calculs'}
-        iterator['table_input_niveau_inf'] = iterator.apply(
-            lambda row: f"{dict_prefix[level]}_N{row.niveau_inf}_{row.period}_page{row.page}", axis=1)
-        iterator['table_input'] = iterator.apply(
-            lambda row: f"format_calculsa_N{row.niveau}_{row.period}_page{row.page}", axis=1)
-        iterator['table_output'] = iterator.apply(
-            lambda row: f"format_calculs_N{row.niveau}_{row.period}_page{row.page}", axis=1)
+
+        # Concaténation vectorisée des paramètres dans assign() pour remplacer les apply lambda
+        iterator = iterator.assign(
+            niveau_inf=iterator['niveau'] - 1,
+            table_input_niveau_inf=dict_prefix[level] + "_N" + (iterator['niveau'] - 1).astype(str) + "_" +
+                                   iterator['period'] + "_page" + iterator['page'],
+            table_input="format_calculsa_N" + iterator['niveau'].astype(str) + "_" +
+                        iterator['period'] + "_page" + iterator['page'],
+            table_output="format_calculs_N" + iterator['niveau'].astype(str) + "_" +
+                         iterator['period'] + "_page" + iterator['page']
+        )
+
         return iterator
 
     def _get_tab_ref(self, level):
@@ -462,8 +431,8 @@ class Barometre(SqlOperations):
         tab_ref['rename_var'] = 'var_' + (tab_ref['tri'] + tab_ref['tri'].max()).astype(str)
         tab_ref['var_partition_by'] = tab_ref.apply(
             lambda
-                row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, col_name) as {row.rename_var}",
-            axis=1)
+                row: f" ,MAX(CASE WHEN tri = {row.tri} THEN kpi END) OVER (PARTITION BY N{level}_C_ENTITE, col_name) "
+                     f"as {row.rename_var}", axis=1)
         tab_ref['var_transposed'] = ',t.' + tab_ref['rename_var']
         return tab_ref
 
@@ -481,21 +450,24 @@ class Barometre(SqlOperations):
             tab_ref = self._get_tab_ref(level)
             iterator = self._add_partition_vars(iterator, tab_ref)
             calculs_queries_path = os.path.join(self.get_path_parameters()['sql_files'], 'calculs_queries')
+            # Lecture des requêtes SQL avec formatage sécurisé
+            # row['page'] est un objet pandas qui peut être mal interprétés dans .format(...)
+            # Du coup, on fait une conversion explicite de page en chaîne dans le format des requêtes
             iterator['query'] = iterator.apply(lambda row: self.sql_operations.read_query_blocks(
                     calculs_queries_path,
                     'formatage_evol_page6to9_level5to4.sql',
-                    format=row.to_dict()
+                    format={**row.to_dict(), 'page': str(row['page'])}
                 ), axis=1
             )
             iterator['query_drop_table_input'] = iterator.apply(
-                lambda row: f"DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{row.page};", axis=1
+                lambda row: f"DROP TABLE format_calculsa_N{row.niveau}_{row.period}_page{str(row.page)};", axis=1
             )
             # On aplatit toutes les listes de requêtes en une seule liste et on exécute
             all_queries = list(chain.from_iterable(iterator['query']))
-            print(all_queries)
             self.sql_operations.execute_queries(all_queries)
 
-            all_drop_queries = list(chain.from_iterable(iterator['query_drop_table_input']))
+            # Exécution des requêtes DROP TABLE
+            all_drop_queries = iterator['query_drop_table_input'].tolist()
             self.sql_operations.execute_queries(all_drop_queries)
 
     def calculs(self):
@@ -525,7 +497,6 @@ class Barometre(SqlOperations):
         print('Execute build_format_calculs_page6to9_level5to4 debut...........')
         self.build_format_calculs_page6to9_level5to4()
         print('Execute build_format_calculs_page6to9_level5to4 fin...........')
-
 
     def build_restitution_threshold(self) -> None:
         # We pass the parameters and execute our queries from a lookup table
