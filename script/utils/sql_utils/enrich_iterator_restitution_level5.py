@@ -98,8 +98,6 @@ def _build_insert_before(row):
         return ", case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before"
 
 
-# Avantage : Chaque règle de construction de chaîne est isolée et peut être testée individuellement.
-# La fonction enrich_iterator_level5 est maintenant une orchestratrice qui applique ces règles
 def enrich_iterator_restitution_level5(df_iterator_nsup: pd.DataFrame) -> pd.DataFrame:
     df = df_iterator_nsup.copy()
 
