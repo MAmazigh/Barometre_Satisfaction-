@@ -653,7 +653,7 @@ class Barometre(SqlOperations):
     #     # for query in iterator_for_output['query_drop_table_input'].values.tolist():
     #     #     self.sql_operations.execute_query(query)
     #
-    def prepare_iterator_restitution_level5(self):
+    def prepare_iterator_restitution(self, niveau: int = 5):
         # 1. Récupération des données et nettoyage initial
         iterator = self.get_parameters_table(level=2)
 
@@ -661,7 +661,10 @@ class Barometre(SqlOperations):
         iterator = iterator.drop(['debut_ap', 'debut_mc', 'debut_mp', 'fin_ap', 'fin_mc', 'fin_mp'], axis=1)
 
         # 2. Filtrage (niveau 5)
-        iterator_nsup = iterator.query("niveau == 5").copy()
+        if niveau == 5:
+            iterator = iterator.query("niveau == 5").copy()
+        else:
+            iterator = iterator.query("niveau != 5").copy()
 
         # 3. Création des DataFrames de clés (extraction dans une helper function si cette logique est réutilisée)
         df_tableaux = pd.DataFrame({
@@ -672,7 +675,7 @@ class Barometre(SqlOperations):
         df_pages = pd.DataFrame({"key": 0, "page": range(2, 6)})
 
         # 4. Construction de l'itérateur final par merge et tri
-        df_iterator = (iterator_nsup
+        df_iterator = (iterator
                        .merge(df_tableaux, on="key", how="outer")
                        .merge(df_pages, on="key", how="outer")
                        .sort_values(["niveau", "page", "tableau", "passage"]))
@@ -763,8 +766,8 @@ class Barometre(SqlOperations):
         else:  # '04_NCPP'
             return ", case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before"
 
-    def enrich_iterator_restitution_level5(self, df_iterator_nsup: pd.DataFrame) -> pd.DataFrame:
-        df = df_iterator_nsup.copy()
+    def enrich_iterator_restitution_level5(self, df_iterator_niveau: pd.DataFrame) -> pd.DataFrame:
+        df = df_iterator_niveau.copy()
 
         # Dérivations simples
         df['niveau_sup'] = np.where(df['niveau'] == 5, '', df['niveau'] + 1)
@@ -853,7 +856,7 @@ class Barometre(SqlOperations):
 
     def build_restitution_level5_page2to5(self):
         # 1. Préparation : Création de la table des paramètres/itérateurs
-        df_iterator = self.prepare_iterator_restitution_level5()
+        df_iterator = self.prepare_iterator_restitution(niveau=5)
 
         # 2. Enrichissement : Ajout des colonnes de construction de requête SQL
         # J'utilise la fonction enrich_iterator_restitution_level5 redéfinie comme une méthode de la classe (self)
