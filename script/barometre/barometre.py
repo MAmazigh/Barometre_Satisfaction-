@@ -726,7 +726,7 @@ class Barometre(SqlOperations):
         if passage == '02_NC':
             return ', 0 as tri'
         elif passage == '03_NINF':
-            return ', t.tri',
+            return ', t.tri'
         else:  # '04_NCPP'
             return ",CASE WHEN f.periode = 'MP' THEN 1 ELSE 2 END AS tri"
 
@@ -735,11 +735,11 @@ class Barometre(SqlOperations):
         passage = row['passage']
 
         if passage == '02_NC':
-            return "'boldgrey' as _info_"
+            return ", 'boldgrey' as _info_"
         elif passage == '03_NINF':
-            return 'NULL as _info_'
+            return ', NULL as _info_'
         else:  # '04_NCPP'
-            return "'bold' as _info_"
+            return ", 'bold' as _info_"
 
     def _build_bloc(self, row):
         """Construit la colonne 'bloc'."""
@@ -828,50 +828,69 @@ class Barometre(SqlOperations):
                                .reset_index())
 
         # Utilisation de f-strings multilignes pour une meilleure lisibilité du SQL
+        # def _build_final_merge_query(row):
+        #     return f""" DROP TABLE IF EXISTS N{row.niveau}_{row.period}_page{row.page};
+        #                           SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['02_NC']}
+        #                       UNION ALL
+        #                           SELECT * FROM {row['03_NINF']}
+        #                       UNION ALL
+        #                           SELECT * FROM {row['04_NCPP']};
+        #     """.strip()
         def _build_final_merge_query(row):
-            return f"""
-    DROP TABLE IF EXISTS N{row.niveau}_{row.period}_page{row.page};
-    SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['02_NC']}
-    UNION ALL SELECT * FROM {row['03_NINF']}
-    UNION ALL SELECT * FROM {row['04_NCPP']};
-            """.strip()
+            # Les instructions sont séparées et stockées dans une liste
+            queries = [
+                # Requête 1: Suppression de la table finale si elle existe
+                f"DROP TABLE IF EXISTS N{row.niveau}_{row.period}_page{row.page};",
 
-        iterator_for_output["query"] = iterator_for_output.apply(
-            _build_final_merge_query, axis=1
-        )
+                # Requête 2: Création et insertion de données par UNION ALL
+                f"""
+                SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['02_NC']}
+                UNION ALL SELECT * FROM {row['03_NINF']}
+                UNION ALL SELECT * FROM {row['04_NCPP']};
+                """.strip()
+            ]
+            # La fonction retourne maintenant une liste
+            return queries
+
+        iterator_for_output["query"] = iterator_for_output.apply(_build_final_merge_query, axis=1)
 
         # Exécution des requêtes de fusion
-        for query in iterator_for_output["query"]:
-            self.sql_operations.execute_query(query)
+        # for query in iterator_for_output["query"]:
+        #     self.sql_operations.execute_query(query)
+        all_queries_for_output = list(chain.from_iterable(iterator_for_output["query"]))
+        self.sql_operations.execute_queries(all_queries_for_output)
 
         # Fonction pour générer la requête de suppression (mieux isolée)
         def _build_drop_query(row):
-            return f"DROP TABLE IF EXISTS {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']};"
+            return [f"DROP TABLE IF EXISTS {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']};"]
 
-        iterator_for_output["query_drop_table"] = iterator_for_output.apply(
-            _build_drop_query, axis=1
-        )
+        iterator_for_output["query_drop_table"] = iterator_for_output.apply(_build_drop_query, axis=1)
 
         # Exécution des requêtes de suppression
-        for query in iterator_for_output["query_drop_table"]:
-            self.sql_operations.execute_query(query)
+        # for query in iterator_for_output["query_drop_table"]:
+        #     self.sql_operations.execute_query(query)
+        all_queries_drop_table = list(chain.from_iterable(iterator_for_output["query_drop_table"]))
+        self.sql_operations.execute_queries(all_queries_drop_table)
 
     def build_restitution_level5_page2to5(self):
-        # 1. PRÉPARATION : Création de la table des paramètres/itérateurs
+        # 1. Préparation : Création de la table des paramètres/itérateurs
         df_iterator = self.prepare_iterator_restitution_level5()
 
-        # 2. ENRICHISSEMENT : Ajout des colonnes de construction de requête SQL
+        # 2. Enrichissement : Ajout des colonnes de construction de requête SQL
         # J'utilise la fonction refactorée, qui est définie comme une méthode de la classe (self)
         df_iterator = self.enrich_iterator_restitution_level5(df_iterator)
 
-        # 3. GÉNÉRATION : Construction des requêtes SQL pour chaque ligne
+        # 3. Génération : Construction des requêtes SQL pour chaque ligne
         df_iterator = self.generate_queries(df_iterator)
 
-        # 4. EXÉCUTION : Envoi des requêtes à la base de données
+        # 4. Exécution : Envoi des requêtes à la base de données
+        print(f'Execute execute_queries_restitution() debut...........')
         self.execute_queries_restitution(df_iterator)
-
-        # 5. NETTOYAGE : Fusion des tables temporaires et suppression
+        print(f'Execute execute_queries_restitution() fin...........')
+        # 5. Nettoyage : Fusion des tables temporaires et suppression
+        print(f'Execute merge_and_cleanup() debut...........')
         self.merge_and_cleanup(df_iterator)
+        print(f'Execute merge_and_cleanup() fin...........')
 
 
     def build_restitution_levelinf_page2to5(self) -> None:
