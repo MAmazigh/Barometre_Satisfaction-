@@ -772,7 +772,7 @@ class Barometre(SqlOperations):
         df['distinct'] = np.where(df['passage'] == '02_NC', 'DISTINCT', '')
 
         # Dérivations complexes (Extraction des règles dans des Helpers)
-        # L'utilisation de apply est plus lisible ici que les multiples np.select pour les chaînes.
+        # L'utilisation de apply est plus lisible ici que les nombreux np.select pour les chaînes.
         df['table_input_level'] = df.apply(self._build_table_input_level, axis=1)
         df['join'] = df.apply(self._build_sql_join, axis=1)
         df['short_label_entity'] = df.apply(self._build_short_label_entity, axis=1)
@@ -782,12 +782,8 @@ class Barometre(SqlOperations):
         df['insert_before'] = df.apply(self._build_insert_before, axis=1)
 
         # Retour à des derivations simples de chaînes (pas besoin de helper pour les cas simples)
-        df['entite'] = np.where(
-            df['passage'] == '03_NINF',
-            " t.N" + df['niveau'].astype(str) + "_c_entite as entite",
-            'f.entite'
-        )
-
+        df['entite'] = np.where(df['passage'] == '03_NINF', " t.N" + df['niveau'].astype(str) + "_c_entite as entite",
+                                'f.entite')
         df['where'] = np.where(df['passage'] == '04_NCPP', "where f.periode <> 'MC'", "where f.periode = 'MC'")
 
         # Utilisation d'un dictionnaire de mapping
@@ -812,12 +808,10 @@ class Barometre(SqlOperations):
                                                               format=row.to_dict()), axis=1)
         return df_iterator
 
-    def execute_queries_restitution(self, df_iterator):
+    def execute_queries_restitution(self, df_iterator, var_query):
         # On aplatit toutes les listes de requêtes en une seule liste et on exécute
-        all_queries = list(chain.from_iterable(df_iterator['query']))
+        all_queries = list(chain.from_iterable(df_iterator[var_query]))
         self.sql_operations.execute_queries(all_queries)
-        # for query in df_iterator["query"]:
-        # self.sql_operations.execute_query(query)
 
     def merge_and_cleanup(self, df_iterator):
         iterator_for_output = (df_iterator
@@ -827,15 +821,6 @@ class Barometre(SqlOperations):
                                       values="table_results_level")
                                .reset_index())
 
-        # Utilisation de f-strings multilignes pour une meilleure lisibilité du SQL
-        # def _build_final_merge_query(row):
-        #     return f""" DROP TABLE IF EXISTS N{row.niveau}_{row.period}_page{row.page};
-        #                           SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['02_NC']}
-        #                       UNION ALL
-        #                           SELECT * FROM {row['03_NINF']}
-        #                       UNION ALL
-        #                           SELECT * FROM {row['04_NCPP']};
-        #     """.strip()
         def _build_final_merge_query(row):
             # Les instructions sont séparées et stockées dans une liste
             queries = [
@@ -855,10 +840,7 @@ class Barometre(SqlOperations):
         iterator_for_output["query"] = iterator_for_output.apply(_build_final_merge_query, axis=1)
 
         # Exécution des requêtes de fusion
-        # for query in iterator_for_output["query"]:
-        #     self.sql_operations.execute_query(query)
-        all_queries_for_output = list(chain.from_iterable(iterator_for_output["query"]))
-        self.sql_operations.execute_queries(all_queries_for_output)
+        self.execute_queries_restitution(iterator_for_output, "query")
 
         # Fonction pour générer la requête de suppression (mieux isolée)
         def _build_drop_query(row):
@@ -867,17 +849,14 @@ class Barometre(SqlOperations):
         iterator_for_output["query_drop_table"] = iterator_for_output.apply(_build_drop_query, axis=1)
 
         # Exécution des requêtes de suppression
-        # for query in iterator_for_output["query_drop_table"]:
-        #     self.sql_operations.execute_query(query)
-        all_queries_drop_table = list(chain.from_iterable(iterator_for_output["query_drop_table"]))
-        self.sql_operations.execute_queries(all_queries_drop_table)
+        self.execute_queries_restitution(iterator_for_output, "query_drop_table")
 
     def build_restitution_level5_page2to5(self):
         # 1. Préparation : Création de la table des paramètres/itérateurs
         df_iterator = self.prepare_iterator_restitution_level5()
 
         # 2. Enrichissement : Ajout des colonnes de construction de requête SQL
-        # J'utilise la fonction refactorée, qui est définie comme une méthode de la classe (self)
+        # J'utilise la fonction enrich_iterator_restitution_level5 redéfinie comme une méthode de la classe (self)
         df_iterator = self.enrich_iterator_restitution_level5(df_iterator)
 
         # 3. Génération : Construction des requêtes SQL pour chaque ligne
@@ -885,7 +864,7 @@ class Barometre(SqlOperations):
 
         # 4. Exécution : Envoi des requêtes à la base de données
         print(f'Execute execute_queries_restitution() debut...........')
-        self.execute_queries_restitution(df_iterator)
+        self.execute_queries_restitution(df_iterator, "query")
         print(f'Execute execute_queries_restitution() fin...........')
         # 5. Nettoyage : Fusion des tables temporaires et suppression
         print(f'Execute merge_and_cleanup() debut...........')
