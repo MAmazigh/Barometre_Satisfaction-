@@ -7,7 +7,7 @@ import os
 import pandas as pd
 import numpy as np
 import datetime
-from typing import Dict
+from typing import Dict, List
 
 from get_paths import get_current_path, get_path
 from operations_dates import get_dict_periodicite, get_liste_periodicite
@@ -63,7 +63,7 @@ class Barometre(SqlOperations):
         # self.extraction()
         # print(f'Execute extraction fin {datetime.datetime.now()}...........')
         # print(f'Execute calculs debut {datetime.datetime.now()}...........')
-        # self.calculs()
+        self.calculs()
         # print(f'Execute calculs fin {datetime.datetime.now()}...........')
         # Mise en forme et sortie sous excel-pdf-html ou à plat pour power bi ?
         print(f'Execute restitution debut {datetime.datetime.now()}...........')
@@ -471,6 +471,76 @@ class Barometre(SqlOperations):
             all_drop_queries = iterator['query_drop_table_input'].tolist()
             self.sql_operations.execute_queries(all_drop_queries)
 
+    def calculer_moyenne_moitie_superieure(self, df: pd.DataFrame, niveau_entite: str, liste_items: List[str], nom_table: str
+                                           ) -> None:
+        """
+        Réalise le calcul de la moyenne du top 50 des items de satisfaction par la logique vectorisée.
+        """
+        # 1. Préparation et Calcul des Seuils
+        # Étape 1 : melt, nettoyage et tri
+        df_long = df.melt(id_vars=niveau_entite,
+                          value_vars=liste_items,
+                          var_name='item',
+                          value_name='note'
+                          )
+        # Suppression des lignes non renseignées
+        df_long = df_long.dropna(subset=['note'])
+        # Le tri est essentiel : par groupe, par item, et par note décroissante.
+        df_long = df_long.sort_values([niveau_entite, 'item', 'note'], ascending=[True, True, False]
+                                      ).reset_index(drop=True)
+
+        # Étape 2 : Calculer le seuil (N/2) pour chaque groupe x item
+        df_comptages = df_long.groupby([niveau_entite, 'item']).agg(effectif_valide=('note', 'size')).reset_index()
+
+        df_comptages["seuil_coupe"] = np.ceil(df_comptages["effectif_valide"] / 2).astype(int)
+
+        # 2. Identification Vectorielle des Lignes à Conserver
+        #    Nous allons identifier la position (le rang) de chaque ligne dans son propre groupe trié en utilisant groupby().cumcount().
+        # Étape 3 : Calculer le rang (rang_dans_groupe)
+        df_long['rang_dans_groupe'] = df_long.groupby([niveau_entite, 'item']).cumcount()
+        # 2. Calculer la somme cumulée des notes
+        # Étant donné que le DataFrame df_long est déjà trié par note décroissante,
+        # cette colonne accumulera les notes des mieux notés.
+        # df_long['somme_cumulee'] = df_long.groupby([niveau_entite, 'item'])['note'].cumsum()
+
+        # Fusionner le DataFrame long avec le DataFrame des seuils
+        df_long_avec_seuil = pd.merge(df_long, df_comptages[[niveau_entite, 'item', 'seuil_coupe']],
+                                      on=[niveau_entite, 'item'],
+                                      how='left'
+                                      )
+
+        # Étape 4 : Filtrer pour ne conserver que la moitié supérieure
+        # La ligne doit être conservée si son rang est STRICTEMENT inférieur au seuil
+        df_moitie_sup = df_long_avec_seuil[
+            df_long_avec_seuil['rang_dans_groupe'] < df_long_avec_seuil['seuil_coupe']
+            ]
+
+        # 3. Calcul Final de la Moyenne
+        # Maintenant que df_moitie_sup ne contient que les notes de la moitié supérieure pour chaque segment/item,
+        # le calcul de la moyenne finale est trivial :
+        # Étape 5 : Calculer la moyenne sur le DataFrame tronqué
+        df_moyennes_finales = (df_moitie_sup
+                               .groupby([niveau_entite, 'item'])
+                               .agg(Moyenne_Moitie_Sup=('note', 'mean'))
+                               .reset_index()
+                               )
+
+        try:
+            df_moyennes_finales.to_sql(
+                name=nom_table,
+                con=self.engine,
+                if_exists='replace',  # Options: 'fail', 'replace', 'append'
+                index=False  # Ne pas inclure l'index du DataFrame comme colonne
+            )
+            print(f"DataFrame exporté avec succès vers la table '{nom_table}' dans PostgreSQL.")
+
+        except Exception as e:
+            print(f"Erreur lors de l'exportation vers SQL: {e}")
+
+        # Renommer la colonne d'entité pour la rendre générique si nécessaire
+        # df_moyennes_finales = df_moyennes_finales.rename(columns={'n5_c_entite': group_by_col})
+        # return df_moyennes_finales
+
     def calculs(self):
         """
         requêtes de calculs des indicateurs par page
@@ -866,13 +936,13 @@ class Barometre(SqlOperations):
         df_iterator = self.generate_queries(df_iterator)
 
         # 4. Exécution : Envoi des requêtes à la base de données
-        print(f'Execute execute_queries_restitution() debut...........')
+        # print(f'Execute execute_queries_restitution() debut...........')
         self.execute_queries_restitution(df_iterator, "query")
-        print(f'Execute execute_queries_restitution() fin...........')
+        # print(f'Execute execute_queries_restitution() fin...........')
         # 5. Nettoyage : Fusion des tables temporaires et suppression
-        print(f'Execute merge_and_cleanup() debut...........')
+        # print(f'Execute merge_and_cleanup() debut...........')
         self.merge_and_cleanup(df_iterator)
-        print(f'Execute merge_and_cleanup() fin...........')
+        # print(f'Execute merge_and_cleanup() fin...........')
 
 
     def build_restitution_levelinf_page2to5(self) -> None:
