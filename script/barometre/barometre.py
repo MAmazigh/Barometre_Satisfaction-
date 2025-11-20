@@ -953,7 +953,6 @@ class Barometre(SqlOperations):
         self.merge_and_cleanup(df_iterator)
         # print(f'Execute merge_and_cleanup() fin...........')
 
-
     def build_restitution_levelinf_page2to5(self) -> None:
         """
         We base our loops on a lookup table
