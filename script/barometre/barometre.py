@@ -15,6 +15,7 @@ from sql_operations import SqlOperations
 from sql_schema import get_schema_from_json
 from sql_utils import enrich_iterator_with_sql_fragments_for_extraction, process_extraction_page_queries
 from sql_utils import enrich_iterator_with_sql_fragments_for_calculs
+from read import read_excel_file
 
 from sqlalchemy import text
 from ordered_set import OrderedSet
@@ -478,11 +479,19 @@ class Barometre(SqlOperations):
 
         A REPRENDRE : RECUPERER LES ITEMS A PARTIR DU FICHIER EXCEL. INTEGRER UNE EXTRACTION DE DONNEES ANNUELLES
         """
+
+        path_to_liste_items_xlsx = self.path_to_database + 'Liste_items_definition_seuils_classes.xlsx'
+        df_bc = read_excel_file(path_to_liste_items_xlsx, sheet_name='Bloc commun')
+        liste_items = df_bc['liste_items'].to_list()
+        # df_specificite = read_excel_file(path_to_liste_items_xlsx, sheet_name='Spécificité métiers')
+        # liste_specificites = df_specificite['liste_items'].to_list()
+        # liste_items = liste_bloc_commun + liste_specificites
+
         # On va boucler sur les niveaux entité : 5, 4 et 3
         for niv in range(5, 2, -1):
             niveau_entite = f'n{niv}_c_entite'
             # 1. Préparation et Calcul des Seuils
-            # Étape 1 : melt, nettoyage et tri
+            # Étape 1 : transposition, nettoyage et tri
             df_long = df.melt(id_vars=niveau_entite,
                               value_vars=liste_items,
                               var_name='item',
@@ -498,7 +507,7 @@ class Barometre(SqlOperations):
             df_comptages = df_long.groupby([niveau_entite, 'item']).agg(effectif_valide=('note', 'size')).reset_index()
             df_comptages["seuil_coupe"] = np.ceil(df_comptages["effectif_valide"] / 2).astype(int)
 
-            # 2. Identification Vectorielle des Lignes à Conserver
+            # 1. Identification Vectorielle des Lignes à Conserver
             # Nous allons identifier la position (le rang) de chaque ligne dans son propre groupe trié
             # en utilisant groupby().cumcount().
             # Étape 3 : Calculer le rang (rang_dans_groupe)
@@ -524,13 +533,13 @@ class Barometre(SqlOperations):
             # 3. Calcul Final de la Moyenne
             # Maintenant que df_moitie_sup ne contient que les notes de la moitié supérieure pour chaque segment/item,
             # le calcul de la moyenne finale est trivial :
-            # Étape 5 : Calculer la moyenne sur le DataFrame tronqué
+            # Étape 4 : Calculer la moyenne sur le DataFrame tronqué
             df_moyennes_finales = (df_moitie_sup
                                    .groupby([niveau_entite, 'item'])
                                    .agg(Moyenne_Moitie_Sup=('note', 'mean'))
                                    .reset_index()
                                    )
-            # Intégration dans SQL des résultats
+            # Étape 5 : Intégration dans SQL des résultats
             try:
                 df_moyennes_finales.to_sql(
                     name=f"moyenne_top50_n{niv}",
