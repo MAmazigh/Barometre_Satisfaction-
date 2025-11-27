@@ -57,10 +57,10 @@ class Barometre(SqlOperations):
 
     def run(self) -> None:
 
-        print(f'Execute pre_production debut {datetime.datetime.now()}...........')
-        self.pre_production()
-        print(f'Execute pre_production fin {datetime.datetime.now()}...........')
-        # print(f'Execute extraction debut {datetime.datetime.now()}...........')
+        # print(f'Execute pre_production debut {datetime.datetime.now()}...........')
+        # self.pre_production()
+        # print(f'Execute pre_production fin {datetime.datetime.now()}...........')
+        # # print(f'Execute extraction debut {datetime.datetime.now()}...........')
         # self.extraction()
         # print(f'Execute extraction fin {datetime.datetime.now()}...........')
         print(f'Execute calculs debut {datetime.datetime.now()}...........')
@@ -472,7 +472,7 @@ class Barometre(SqlOperations):
             all_drop_queries = iterator['query_drop_table_input'].tolist()
             self.sql_operations.execute_queries(all_drop_queries)
 
-    def calculer_moyenne_moitie_superieure(self, df: pd.DataFrame, liste_items: List[str]) -> None:
+    def calculer_moyenne_moitie_superieure(self) -> None:
         """
         Réalise le calcul de la moyenne du top 50 des items de satisfaction.
         On utilise la logique vectorisée plutôt qu'une boucle sur les items
@@ -486,6 +486,15 @@ class Barometre(SqlOperations):
         # df_specificite = read_excel_file(path_to_liste_items_xlsx, sheet_name='Spécificité métiers')
         # liste_specificites = df_specificite['liste_items'].to_list()
         # liste_items = liste_bloc_commun + liste_specificites
+
+        query = f"""
+        SELECT N5_C_ENTITE, N4_C_ENTITE, N3_C_ENTITE,
+               satis_glob_cont, {', '.join(liste_items)}  
+        FROM satisfaction
+        where date_reponse >= '2014-10-01'
+          and satis_glob_cont is not null
+        """
+        df = pd.read_sql_query(text(query), self.connexion)
 
         # On va boucler sur les niveaux entité : 5, 4 et 3
         for niv in range(5, 2, -1):
@@ -567,22 +576,22 @@ class Barometre(SqlOperations):
         valide
             :return:
             """
-        print(f'Execute build_calculs_page2to5 debut...........')
-        self.build_calculs_page2to5()
-        print('Execute build_calculs_page2to5 fin...........')
-        print(f'Execute build_calculs_page6to9 debut...........')
-        self.build_calculs_page6to9()
-        print('Execute build_calculs_page6to9 fin...........')
-        # calculus of KPI and their evolutions
-        print('Execute build_format_calculs_page2to5 debut...........')
-        self.build_format_calculs_page2to5()
-        print('Execute build_format_calculs_page2to5 fin...........')
-        print('Execute build_format_calculs_page6to9 debut...........')
-        self.build_format_calculs_page6to9()
-        print('Execute build_format_calculs_page6to9 fin...........')
-        print('Execute build_format_calculs_page6to9_level5to4 debut...........')
-        self.build_format_calculs_page6to9_level5to4()
-        print('Execute build_format_calculs_page6to9_level5to4 fin...........')
+        # print(f'Execute build_calculs_page2to5 debut...........')
+        # self.build_calculs_page2to5()
+        # print('Execute build_calculs_page2to5 fin...........')
+        # print(f'Execute build_calculs_page6to9 debut...........')
+        # self.build_calculs_page6to9()
+        # print('Execute build_calculs_page6to9 fin...........')
+        # # calculus of KPI and their evolutions
+        # print('Execute build_format_calculs_page2to5 debut...........')
+        # self.build_format_calculs_page2to5()
+        # print('Execute build_format_calculs_page2to5 fin...........')
+        # print('Execute build_format_calculs_page6to9 debut...........')
+        # self.build_format_calculs_page6to9()
+        # print('Execute build_format_calculs_page6to9 fin...........')
+        # print('Execute build_format_calculs_page6to9_level5to4 debut...........')
+        # self.build_format_calculs_page6to9_level5to4()
+        # print('Execute build_format_calculs_page6to9_level5to4 fin...........')
         print('Execute calculer_moyenne_moitie_superieure debut...........')
         self.calculer_moyenne_moitie_superieure()
         print('Execute calculer_moyenne_moitie_superieure fin...........')
