@@ -60,19 +60,19 @@ class Barometre(SqlOperations):
 
     def run(self) -> None:
 
-        # print(f'Execute pre_production debut {datetime.datetime.now()}...........')
-        # self.pre_production()
-        # print(f'Execute pre_production fin {datetime.datetime.now()}...........')
-        # # print(f'Execute extraction debut {datetime.datetime.now()}...........')
-        # self.extraction()
-        # print(f'Execute extraction fin {datetime.datetime.now()}...........')
+        print(f'Execute pre_production debut {datetime.datetime.now()}...........')
+        self.pre_production()
+        print(f'Execute pre_production fin {datetime.datetime.now()}...........')
+        # print(f'Execute extraction debut {datetime.datetime.now()}...........')
+        self.extraction()
+        print(f'Execute extraction fin {datetime.datetime.now()}...........')
         print(f'Execute calculs debut {datetime.datetime.now()}...........')
         self.calculs()
         print(f'Execute calculs fin {datetime.datetime.now()}...........')
         # Mise en forme et sortie sous excel-pdf-html ou à plat pour power bi ?
-        # print(f'Execute restitution debut {datetime.datetime.now()}...........')
-        # self.restitution()
-        # print(f'Execute restitution fin {datetime.datetime.now()}...........')
+        print(f'Execute restitution debut {datetime.datetime.now()}...........')
+        self.restitution()
+        print(f'Execute restitution fin {datetime.datetime.now()}...........')
 
     def pre_production(self):
         """
@@ -573,8 +573,6 @@ class Barometre(SqlOperations):
 
             except Exception as e:
                 print(f"Erreur lors de l'exportation de carte_tetraclasse_n{niv} vers SQL: {e}")
-
-
 
     def calculs(self):
         """
@@ -1161,9 +1159,9 @@ class Barometre(SqlOperations):
         # self.build_restitution_levelinf_page2to5()
         # print(f'Execute build_restitution_levelinf_page2to5 fin {datetime.datetime.now()}...........')
 
-        # print(f'Execute build_integration_reference_llosa_page6to9 debut {datetime.datetime.now()}...........')
-        # self.build_integration_reference_llosa_page6to9()
-        # print(f'Execute Execute build_integration_reference_llosa_page6to9 fin {datetime.datetime.now()}...........')
+        # print(f'Execute build_restitution_page6to9 debut {datetime.datetime.now()}...........')
+        # self.build_restitution_page6to9()
+        # print(f'Execute build_restitution_page6to9 fin {datetime.datetime.now()}...........')
 
 
 if __name__ == '__main__':
