@@ -1,0 +1,6 @@
+# -*- coding: utf-8 -*-
+from .modele_tetraclasse_windal_parallelise import significativite_chevauchement
+from .modele_tetraclasse_windal_parallelise import calculate_ic_proportion
+from .modele_tetraclasse_windal_parallelise import discretisation
+from .modele_tetraclasse_windal_parallelise import calculer_tetraclasse_pour_groupe
+from .modele_tetraclasse_windal_parallelise import modele_tetraclasse_windal_parallelise
