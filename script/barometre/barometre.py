@@ -7,7 +7,9 @@ import os
 import pandas as pd
 import numpy as np
 import datetime
-from typing import Dict, List
+import prince
+from scipy.stats import t
+from typing import Dict, List, Optional
 
 from get_paths import get_current_path, get_path
 from operations_dates import get_dict_periodicite, get_liste_periodicite
@@ -16,6 +18,7 @@ from sql_schema import get_schema_from_json
 from sql_utils import enrich_iterator_with_sql_fragments_for_extraction, process_extraction_page_queries
 from sql_utils import enrich_iterator_with_sql_fragments_for_calculs
 from read import read_excel_file
+from modelisation_tetraclasse import modele_tetraclasse_windal_parallelise, discretisation
 
 from sqlalchemy import text
 from ordered_set import OrderedSet
@@ -476,8 +479,6 @@ class Barometre(SqlOperations):
         """
         Réalise le calcul de la moyenne du top 50 des items de satisfaction.
         On utilise la logique vectorisée plutôt qu'une boucle sur les items
-
-        A REPRENDRE : RECUPERER LES ITEMS A PARTIR DU FICHIER EXCEL. INTEGRER UNE EXTRACTION DE DONNEES ANNUELLES
         """
 
         path_to_liste_items_xlsx = self.path_to_database + 'Liste_items_definition_seuils_classes.xlsx'
@@ -548,22 +549,32 @@ class Barometre(SqlOperations):
                                    .agg(Moyenne_Moitie_Sup=('note', 'mean'))
                                    .reset_index()
                                    )
+
+            # Modelisation Tetraclasse basée sur l'approche probabilisée de Windal avec intervals de confiance
+            carte_tetraclasse = modele_tetraclasse_windal_parallelise(df=df, dichotomiser_func=discretisation,
+                                                                           liste_items=liste_items,
+                                                                           group_by_cols=[f'n{niv}_c_entite'],
+                                                                           seuil_min=80)
+
+            proba_conditionnelles = pd.merge(df_moyennes_finales,
+                                             carte_tetraclasse,
+                                             on=[f'n{niv}_c_entite', 'item'],
+                                             how='outer')
+
             # Étape 5 : Intégration dans SQL des résultats
             try:
-                df_moyennes_finales.to_sql(
-                    name=f"moyenne_top50_n{niv}",
+                proba_conditionnelles.to_sql(
+                    name=f"carte_tetraclasse_n{niv}",
                     con=self.engine,
                     if_exists='replace',  # Options: 'fail', 'replace', 'append'
                     index=False  # Ne pas inclure l'index du DataFrame comme colonne
                 )
-                print(f"DataFrame exporté avec succès vers la table moyenne_top50_n{niv} dans PostgreSQL.")
+                print(f"DataFrame exporté avec succès vers la table carte_tetraclasse_n{niv} dans PostgreSQL.")
 
             except Exception as e:
-                print(f"Erreur lors de l'exportation de moyenne_top50_n{niv} vers SQL: {e}")
+                print(f"Erreur lors de l'exportation de carte_tetraclasse_n{niv} vers SQL: {e}")
 
-            # Renommer la colonne d'entité pour la rendre générique si nécessaire
-            # df_moyennes_finales = df_moyennes_finales.rename(columns={'n5_c_entite': group_by_col})
-            # return df_moyennes_finales
+
 
     def calculs(self):
         """
@@ -576,22 +587,22 @@ class Barometre(SqlOperations):
         valide
             :return:
             """
-        # print(f'Execute build_calculs_page2to5 debut...........')
-        # self.build_calculs_page2to5()
-        # print('Execute build_calculs_page2to5 fin...........')
-        # print(f'Execute build_calculs_page6to9 debut...........')
-        # self.build_calculs_page6to9()
-        # print('Execute build_calculs_page6to9 fin...........')
-        # # calculus of KPI and their evolutions
-        # print('Execute build_format_calculs_page2to5 debut...........')
-        # self.build_format_calculs_page2to5()
-        # print('Execute build_format_calculs_page2to5 fin...........')
-        # print('Execute build_format_calculs_page6to9 debut...........')
-        # self.build_format_calculs_page6to9()
-        # print('Execute build_format_calculs_page6to9 fin...........')
-        # print('Execute build_format_calculs_page6to9_level5to4 debut...........')
-        # self.build_format_calculs_page6to9_level5to4()
-        # print('Execute build_format_calculs_page6to9_level5to4 fin...........')
+        print(f'Execute build_calculs_page2to5 debut...........')
+        self.build_calculs_page2to5()
+        print('Execute build_calculs_page2to5 fin...........')
+        print(f'Execute build_calculs_page6to9 debut...........')
+        self.build_calculs_page6to9()
+        print('Execute build_calculs_page6to9 fin...........')
+        # calculus of KPI and their evolutions
+        print('Execute build_format_calculs_page2to5 debut...........')
+        self.build_format_calculs_page2to5()
+        print('Execute build_format_calculs_page2to5 fin...........')
+        print('Execute build_format_calculs_page6to9 debut...........')
+        self.build_format_calculs_page6to9()
+        print('Execute build_format_calculs_page6to9 fin...........')
+        print('Execute build_format_calculs_page6to9_level5to4 debut...........')
+        self.build_format_calculs_page6to9_level5to4()
+        print('Execute build_format_calculs_page6to9_level5to4 fin...........')
         print('Execute calculer_moyenne_moitie_superieure debut...........')
         self.calculer_moyenne_moitie_superieure()
         print('Execute calculer_moyenne_moitie_superieure fin...........')
