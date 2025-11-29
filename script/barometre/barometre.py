@@ -795,21 +795,30 @@ class Barometre(SqlOperations):
         page = row['page']
         passage = row['passage']
 
-        if passage in ['02_NC', '04_NCPP']:
-            # Utiliser f-string pour une meilleure lisibilité
+        if passage == '01_NSUP':
+            niveau_sup = row['niveau_sup']
+            # Utilise f-string pour une meilleure lisibilité
+            return f"format_calculs_n{niveau_sup}_{period}_page{page} as f"
+        elif passage in ['02_NC', '04_NCPP']:
             return f"format_calculs_n{niveau}_{period}_page{page} as f"
         else:  # passage == '03_NINF'
             niveau_inf = row['niveau_inf']
             return f"format_calculs_n{niveau_inf}_{period}_page{page} as f"
 
-    def _build_sql_join(self, row):
+    def _build_sql_join(self, row, level):
         """Construit la colonne 'join'."""
         passage = row['passage']
         niveau = row['niveau']
         niveau_inf = row['niveau_inf']
 
-        if passage == '02_NC':
-            return f" join tab_ref_n{niveau} as t on t.N{niveau}_c_entite = f.entite"
+        if passage == '01_NSUP':
+            niveau_sup = row['niveau_sup']
+            return f" join tab_ref_n{niveau_sup} as t on t.N{niveau_sup}_c_entite = f.entite"
+        elif passage == '02_NC':
+            if level == 5:
+                return f" join tab_ref_n{niveau} as t on t.N{niveau}_c_entite = f.entite"
+            else:
+                return f" join tab_ref_n{niveau} as t on t.N{niveau}_c_entite = f.entite and t.tri=1"
         elif passage == '03_NINF':
             return f" join tab_ref_n{niveau} as t on t.N{niveau_inf}_c_entite = f.entite"
         else:  # '04_NCPP'
@@ -820,8 +829,11 @@ class Barometre(SqlOperations):
         passage = row['passage']
         niveau = row['niveau']
         niveau_inf = row['niveau_inf']
+        niveau_sup = row['niveau_sup']
 
-        if passage == '02_NC':
+        if passage == '01_NSUP':
+            return f",t.N{niveau_sup}_lc_entite as short_label_entity"
+        elif passage == '02_NC':
             return f",t.N{niveau}_lc_entite as short_label_entity"
         elif passage == '03_NINF':
             return f",t.N{niveau_inf}_lc_entite as short_label_entity"
@@ -832,7 +844,7 @@ class Barometre(SqlOperations):
         """Construit la colonne 'tri'."""
         passage = row['passage']
 
-        if passage == '02_NC':
+        if passage in ['01_NSUP', '02_NC']:
             return ', 0 as tri'
         elif passage == '03_NINF':
             return ', t.tri'
@@ -872,18 +884,18 @@ class Barometre(SqlOperations):
         else:  # '04_NCPP'
             return ", case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before"
 
-    def enrich_iterator_restitution_level5(self, df_iterator_niveau: pd.DataFrame) -> pd.DataFrame:
+    def enrich_iterator_restitution_level(self, df_iterator_niveau: pd.DataFrame, level: int = 5) -> pd.DataFrame:
         df = df_iterator_niveau.copy()
 
         # Dérivations simples
-        df['niveau_sup'] = np.where(df['niveau'] == 5, '', df['niveau'] + 1)
+        df['niveau_sup'] = np.where(df['niveau'] == level, '', df['niveau'] + 1)
         df['niveau_inf'] = df['niveau'] - 1
         df['distinct'] = np.where(df['passage'] == '02_NC', 'DISTINCT', '')
 
         # Dérivations complexes (Extraction des règles dans des Helpers)
         # L'utilisation de apply est plus lisible ici que les nombreux np.select pour les chaînes.
         df['table_input_level'] = df.apply(self._build_table_input_level, axis=1)
-        df['join'] = df.apply(self._build_sql_join, axis=1)
+        df['join'] = df.apply(self._build_sql_join(level), axis=1)
         df['short_label_entity'] = df.apply(self._build_short_label_entity, axis=1)
         df['tri'] = df.apply(self._build_tri, axis=1)
         df['_info_'] = df.apply(self._build_info_, axis=1)
@@ -891,7 +903,8 @@ class Barometre(SqlOperations):
         df['insert_before'] = df.apply(self._build_insert_before, axis=1)
 
         # Retour à des derivations simples de chaînes (pas besoin de helper pour les cas simples)
-        df['entite'] = np.where(df['passage'] == '03_NINF', " t.N" + df['niveau'].astype(str) + "_c_entite as entite",
+        df['entite'] = np.where(df['passage'].isin(['01_NSUP', '03_NINF']),
+                                " t.N" + df['niveau'].astype(str) + "_c_entite as entite",
                                 'f.entite')
         df['where'] = np.where(df['passage'] == '04_NCPP', "where f.periode <> 'MC'", "where f.periode = 'MC'")
 
@@ -966,7 +979,7 @@ class Barometre(SqlOperations):
 
         # 2. Enrichissement : Ajout des colonnes de construction de requête SQL
         # J'utilise la fonction enrich_iterator_restitution_level5 redéfinie comme une méthode de la classe (self)
-        df_iterator = self.enrich_iterator_restitution_level5(df_iterator)
+        df_iterator = self.enrich_iterator_restitution_level(df_iterator, level=5)
 
         # 3. Génération : Construction des requêtes SQL pour chaque ligne
         df_iterator = self.generate_queries(df_iterator)
@@ -987,19 +1000,22 @@ class Barometre(SqlOperations):
         :return:
         """
 
-        iterator = self.get_parameters_table(level=2)
-        cols_to_drop = ['debut_ap', 'debut_mc', 'debut_mp', 'fin_ap', 'fin_mc', 'fin_mp']
-        iterator.drop(cols_to_drop, axis=1, inplace=True)
-        # Level 4 and under : 4 pass through in the query :
-        iterator_ninf = iterator.query(" niveau != 5 ").copy()
-        df = pd.DataFrame(dict(key=0,
-                               tableau=["A", "B", "C", "D"],
-                               passage=["01_NSUP", "02_NC", "03_NINF", "04_NCPP"])
-                          )
-        page = pd.DataFrame(dict(key=0, page=range(2, 6)))
-        df_iterator_ninf = pd.merge(iterator_ninf, df, on='key', how='outer').merge(page, on='key', how='outer')
-        df_iterator_ninf.sort_values(['niveau', 'page', 'tableau', 'passage'], ascending=[False, True, True, True],
-                                     inplace=True)
+        # iterator = self.get_parameters_table(level=2)
+        # cols_to_drop = ['debut_ap', 'debut_mc', 'debut_mp', 'fin_ap', 'fin_mc', 'fin_mp']
+        # iterator.drop(cols_to_drop, axis=1, inplace=True)
+        # # Level 4 and under : 4 pass through in the query :
+        # iterator_ninf = iterator.query(" niveau != 5 ").copy()
+        # df = pd.DataFrame(dict(key=0,
+        #                        tableau=["A", "B", "C", "D"],
+        #                        passage=["01_NSUP", "02_NC", "03_NINF", "04_NCPP"])
+        #                   )
+        # page = pd.DataFrame(dict(key=0, page=range(2, 6)))
+        # df_iterator_ninf = pd.merge(iterator_ninf, df, on='key', how='outer').merge(page, on='key', how='outer')
+        # df_iterator_ninf.sort_values(['niveau', 'page', 'tableau', 'passage'], ascending=[False, True, True, True],
+        #                              inplace=True)
+
+        # 1. Préparation : Création de la table des paramètres/itérateurs
+        df_iterator = self.prepare_iterator_restitution(niveau=4)
 
         # Define parameters to pass to the queries of level 4 and under
         df_iterator_ninf['niveau_sup'] = df_iterator_ninf['niveau'] + 1
@@ -1155,9 +1171,9 @@ class Barometre(SqlOperations):
         print(f'Execute build_restitution_level5_page2to5 debut {datetime.datetime.now()}...........')
         self.build_restitution_level5_page2to5()
         print(f'Execute build_restitution_level5_page2to5 fin {datetime.datetime.now()}...........')
-        # print(f'Execute build_restitution_levelinf_page2to5 debut {datetime.datetime.now()}...........')
-        # self.build_restitution_levelinf_page2to5()
-        # print(f'Execute build_restitution_levelinf_page2to5 fin {datetime.datetime.now()}...........')
+        print(f'Execute build_restitution_levelinf_page2to5 debut {datetime.datetime.now()}...........')
+        self.build_restitution_levelinf_page2to5()
+        print(f'Execute build_restitution_levelinf_page2to5 fin {datetime.datetime.now()}...........')
 
         # print(f'Execute build_restitution_page6to9 debut {datetime.datetime.now()}...........')
         # self.build_restitution_page6to9()
