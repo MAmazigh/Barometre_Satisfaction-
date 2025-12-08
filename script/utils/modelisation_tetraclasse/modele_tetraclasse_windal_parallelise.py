@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Fonction qui permet de récupérer la liste des périodicités à produire:
-Elle se base sur le mois de production courant et renvoie une liste
+Fonction qui permet de récupérer les classes statistiquement typées:
+Elle se base sur le modele tetraclasse Llosa revu par Windal.
 """
 import pandas as pd
 import numpy as np
