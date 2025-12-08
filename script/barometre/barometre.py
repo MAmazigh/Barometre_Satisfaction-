@@ -7,9 +7,8 @@ import os
 import pandas as pd
 import numpy as np
 import datetime
-import prince
-from scipy.stats import t
-from typing import Dict, List, Optional
+
+from typing import Dict
 
 from get_paths import get_current_path, get_path
 from operations_dates import get_dict_periodicite, get_liste_periodicite
@@ -60,15 +59,15 @@ class Barometre(SqlOperations):
 
     def run(self) -> None:
 
-        print(f'Execute pre_production debut {datetime.datetime.now()}...........')
-        self.pre_production()
-        print(f'Execute pre_production fin {datetime.datetime.now()}...........')
+        # print(f'Execute pre_production debut {datetime.datetime.now()}...........')
+        # self.pre_production()
+        # print(f'Execute pre_production fin {datetime.datetime.now()}...........')
         # print(f'Execute extraction debut {datetime.datetime.now()}...........')
-        self.extraction()
-        print(f'Execute extraction fin {datetime.datetime.now()}...........')
-        print(f'Execute calculs debut {datetime.datetime.now()}...........')
-        self.calculs()
-        print(f'Execute calculs fin {datetime.datetime.now()}...........')
+        # self.extraction()
+        # print(f'Execute extraction fin {datetime.datetime.now()}...........')
+        # print(f'Execute calculs debut {datetime.datetime.now()}...........')
+        # self.calculs()
+        # print(f'Execute calculs fin {datetime.datetime.now()}...........')
         # Mise en forme et sortie sous excel-pdf-html ou à plat pour power bi ?
         print(f'Execute restitution debut {datetime.datetime.now()}...........')
         self.restitution()
@@ -176,10 +175,9 @@ class Barometre(SqlOperations):
         """
             Méthode principale pour exécuter les extractions PostGreSQL des pages 2 à 9.
 
-            Args:
-                get_parameters_table: Fonction pour récupérer le DataFrame de paramétrage.
-                get_path_parameters: Fonction pour récupérer les chemins de fichiers.
-                sql_operations: Instance de SQLOperations contenant les méthodes read_query et execute_query.
+            get_parameters_table: Fonction pour récupérer le DataFrame de paramétrage.
+            get_path_parameters: Fonction pour récupérer les chemins de fichiers.
+            sql_operations: Instance de SQLOperations contenant les méthodes read_query et execute_query.
             """
         iterator = self.get_parameters_table(level=1)
         iterator = enrich_iterator_with_sql_fragments_for_extraction(iterator)
@@ -541,20 +539,20 @@ class Barometre(SqlOperations):
                 ]
 
             # 3. Calcul Final de la Moyenne
-            # Maintenant que df_moitie_sup ne contient que les notes de la moitié supérieure pour chaque segment/item,
-            # le calcul de la moyenne finale est trivial :
+            # df_moitie_sup ne contient plus que les notes de la moitié supérieure pour chaque entite/item
             # Étape 4 : Calculer la moyenne sur le DataFrame tronqué
             df_moyennes_finales = (df_moitie_sup
                                    .groupby([niveau_entite, 'item'])
-                                   .agg(Moyenne_Moitie_Sup=('note', 'mean'))
+                                   .agg(moyenne_moitie_sup=('note', 'mean'))
                                    .reset_index()
                                    )
+            df_moyennes_finales["moyenne_moitie_sup"] = round(df_moyennes_finales["moyenne_moitie_sup"], 1)
 
             # Modelisation Tetraclasse basée sur l'approche probabilisée de Windal avec intervals de confiance
             carte_tetraclasse = modele_tetraclasse_windal_parallelise(df=df, dichotomiser_func=discretisation,
-                                                                           liste_items=liste_items,
-                                                                           group_by_cols=[f'n{niv}_c_entite'],
-                                                                           seuil_min=80)
+                                                                      liste_items=liste_items,
+                                                                      group_by_cols=[f'n{niv}_c_entite'],
+                                                                      seuil_min=80)
 
             proba_conditionnelles = pd.merge(df_moyennes_finales,
                                              carte_tetraclasse,
@@ -769,15 +767,20 @@ class Barometre(SqlOperations):
         # 2. Filtrage (niveau 5)
         if niveau == 5:
             iterator = iterator.query("niveau == 5").copy()
+            df_tableaux = pd.DataFrame({
+                "key": 0,
+                "tableau": ["A", "B", "C"],
+                "passage": ["02_NC", "03_NINF", "04_NCPP"]
+            })
         else:
             iterator = iterator.query("niveau != 5").copy()
+            df_tableaux = pd.DataFrame({
+                "key": 0,
+                "tableau": ["A", "B", "C", "D"],
+                "passage": ["01_NSUP", "02_NC", "03_NINF", "04_NCPP"]
+            })
 
         # 3. Création des DataFrames de clés (extraction dans une helper function si cette logique est réutilisée)
-        df_tableaux = pd.DataFrame({
-            "key": 0,
-            "tableau": ["A", "B", "C"],
-            "passage": ["02_NC", "03_NINF", "04_NCPP"]
-        })
         df_pages = pd.DataFrame({"key": 0, "page": range(2, 6)})
 
         # 4. Construction de l'itérateur final par merge et tri
@@ -851,56 +854,100 @@ class Barometre(SqlOperations):
         else:  # '04_NCPP'
             return ",CASE WHEN f.periode = 'MP' THEN 1 ELSE 2 END AS tri"
 
-    def _build_info_(self, row):
+    def _build_info_(self, row, level):
         """Construit la colonne '_info_'."""
         passage = row['passage']
+        if level == 5:
+            if passage == '02_NC':
+                return ", 'boldgrey' as _info_"
+            elif passage == '03_NINF':
+                return ', NULL as _info_'
+            else:  # '04_NCPP'
+                return ", 'bold' as _info_"
+        else:
+            if passage == '01_NSUP':
+                return ", 'boldgrey' as _info_"
+            elif passage in ['02_NC', '04_NCPP']:
+                return ", 'bold' as _info_"
+            else:  # '03_NINF'
+                return ', NULL as _info_'
 
-        if passage == '02_NC':
-            return ", 'boldgrey' as _info_"
-        elif passage == '03_NINF':
-            return ', NULL as _info_'
-        else:  # '04_NCPP'
-            return ", 'bold' as _info_"
-
-    def _build_bloc(self, row):
+    def _build_bloc(self, row, level):
         """Construit la colonne 'bloc'."""
         passage = row['passage']
+        if level == 5:
+            if passage == '02_NC':
+                return ', 0 as bloc'
+            elif passage == '03_NINF':
+                return ', 1 as bloc'
+            else:  # '04_NCPP'
+                return ', 2 as bloc'
+        else:
+            if passage == '01_NSUP':
+                return ', 0 as bloc'
+            elif passage == '02_NC':
+                return ', 1 as bloc'
+            elif passage == '03_NINF':
+                return ', 2 as bloc'
+            else:  # '04_NCPP'
+                return ', 3 as bloc'
 
-        if passage == '02_NC':
-            return ', 0 as bloc'
-        elif passage == '03_NINF':
-            return ', 1 as bloc'
-        else:  # '04_NCPP'
-            return ', 2 as bloc'
-
-    def _build_insert_before(self, row):
+    def _build_insert_before(self, row, level):
         """Construit la colonne 'insert_before'."""
         passage = row['passage']
-
-        if passage == '02_NC':
-            return ', NULL as insert_before'
-        elif passage == '03_NINF':
-            return ", case when t.tri = 1 then 'linebreak' else NULL end as insert_before"
-        else:  # '04_NCPP'
-            return ", case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before"
+        if level == 5:
+            if passage == '02_NC':
+                return ', NULL as insert_before'
+            elif passage == '03_NINF':
+                return ", case when t.tri = 1 then 'linebreak' else NULL end as insert_before"
+            else:  # '04_NCPP'
+                return ", case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before"
+        else:
+            if passage == '01_NSUP':
+                return ', NULL as insert_before'
+            elif passage == '02_NC':
+                return ", 'linebreak' as insert_before"
+            elif passage == '03_NINF':
+                return ", case when t.tri = 1 then 'linebreak' else NULL end as insert_before"
+            else:  # '04_NCPP'
+                return ",case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before "
 
     def enrich_iterator_restitution_level(self, df_iterator_niveau: pd.DataFrame, level: int = 5) -> pd.DataFrame:
         df = df_iterator_niveau.copy()
 
         # Dérivations simples
-        df['niveau_sup'] = np.where(df['niveau'] == level, '', df['niveau'] + 1)
+        df['niveau_sup'] = np.where(df['niveau'] == 5, '', df['niveau'] + 1)
         df['niveau_inf'] = df['niveau'] - 1
         df['distinct'] = np.where(df['passage'] == '02_NC', 'DISTINCT', '')
 
         # Dérivations complexes (Extraction des règles dans des Helpers)
         # L'utilisation de apply est plus lisible ici que les nombreux np.select pour les chaînes.
         df['table_input_level'] = df.apply(self._build_table_input_level, axis=1)
-        df['join'] = df.apply(self._build_sql_join(level), axis=1)
+        #   File "C:\Users\Documents\Barometre\script\barometre\barometre.py", line 923,
+        #   in enrich_iterator_restitution_level
+        #
+        #     df['join'] = df.apply(self._build_sql_join(level), axis=1)
+        #
+        # TypeError: _build_sql_join() missing 1 required positional argument: 'level'
+        # La méthode apply de Pandas génère cette exception quand veut passer des arguments supplémentaires àla fonction
+        # Appel Prématuré de la Fonction : L'expression self._build_sql_join(level) appelle immédiatement la méthode
+        # _build_sql_join avant que df.apply ne commence.
+        # Argument Manquant : La méthode _build_sql_join attend probablement trois arguments au total :
+        # (self, row, level). L'appel self._build_sql_join(level) fournit self et level.
+        # L'argument row (qui représente la ligne du DataFrame et qui aurait dû être fourni par df.apply) est manquant
+        # lors de cet appel initial.
+        # Conséquence : Python lève l'exception TypeError car il manque l'argument positionnel requis (row).
+
+        # Pour passer des arguments fixes (level) tout en laissant df.apply fournir l'argument variable (row),
+        # on doit envelopper l'appel dans une fonction lambda.
+        # La fonction lambda prendra la ligne (row) de Pandas et passera ensuite cette ligne, ainsi que votre variable
+        # level, à la méthode _build_sql_join.
+        df['join'] = df.apply(lambda row: self._build_sql_join(row, level), axis=1)
         df['short_label_entity'] = df.apply(self._build_short_label_entity, axis=1)
         df['tri'] = df.apply(self._build_tri, axis=1)
-        df['_info_'] = df.apply(self._build_info_, axis=1)
-        df['bloc'] = df.apply(self._build_bloc, axis=1)
-        df['insert_before'] = df.apply(self._build_insert_before, axis=1)
+        df['_info_'] = df.apply(lambda row: self._build_info_(row, level), axis=1)
+        df['bloc'] = df.apply(lambda row: self._build_bloc(row, level), axis=1)
+        df['insert_before'] = df.apply(lambda row: self._build_insert_before(row, level), axis=1)
 
         # Retour à des derivations simples de chaînes (pas besoin de helper pour les cas simples)
         df['entite'] = np.where(df['passage'].isin(['01_NSUP', '03_NINF']),
@@ -923,10 +970,10 @@ class Barometre(SqlOperations):
 
         return df
 
-    def generate_queries(self, df_iterator):
+    def generate_queries(self, df_iterator, sql_query_to_read: str = "restitution_page2to5"):
         query_path = os.path.join(self.get_path_parameters()["sql_files"], "restitution_queries")
         df_iterator["query"] = df_iterator.apply(
-            lambda row: self.sql_operations.read_query_blocks(query_path, "restitution_page2to5.sql",
+            lambda row: self.sql_operations.read_query_blocks(query_path, f"{sql_query_to_read}.sql",
                                                               format=row.to_dict()), axis=1)
         return df_iterator
 
@@ -935,7 +982,7 @@ class Barometre(SqlOperations):
         all_queries = list(chain.from_iterable(df_iterator[var_query]))
         self.sql_operations.execute_queries(all_queries)
 
-    def merge_and_cleanup(self, df_iterator):
+    def merge_and_cleanup(self, df_iterator, level: int = 5):
         iterator_for_output = (df_iterator
                                .sort_values(["table_results_level"])
                                .pivot(index=["niveau", "period", "page"],
@@ -944,6 +991,7 @@ class Barometre(SqlOperations):
                                .reset_index())
 
         def _build_final_merge_query(row):
+            query_from = f"FROM {row['01_NSUP']}, {row['02_NC']}" if level != 5 else f"FROM {row['02_NC']}"
             # Les instructions sont séparées et stockées dans une liste
             queries = [
                 # Requête 1: Suppression de la table finale si elle existe
@@ -951,7 +999,8 @@ class Barometre(SqlOperations):
 
                 # Requête 2: Création et insertion de données par UNION ALL
                 f"""
-                SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['02_NC']}
+                SELECT * INTO N{row.niveau}_{row.period}_page{row.page} 
+                {query_from}
                 UNION ALL SELECT * FROM {row['03_NINF']}
                 UNION ALL SELECT * FROM {row['04_NCPP']};
                 """.strip()
@@ -966,12 +1015,30 @@ class Barometre(SqlOperations):
 
         # Fonction pour générer la requête de suppression (mieux isolée)
         def _build_drop_query(row):
-            return [f"DROP TABLE IF EXISTS {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']};"]
+            if level != 5:
+                return [f"DROP TABLE IF EXISTS {row['01_NSUP']}, {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']};"]
+            else:
+                return [f"DROP TABLE IF EXISTS {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']};"]
 
         iterator_for_output["query_drop_table"] = iterator_for_output.apply(_build_drop_query, axis=1)
 
         # Exécution des requêtes de suppression
         self.execute_queries_restitution(iterator_for_output, "query_drop_table")
+
+        def _build_drop_table_input_query(row):
+            # Les instructions sont séparées et stockées dans une liste
+            queries = [
+                # Requête 1: Suppression de la table finale si elle existe
+                f"DROP TABLE IF EXISTS format_calculs_n{row.niveau}_{row.period}_page{row.page};"
+                .strip()
+            ]
+            # La fonction retourne maintenant une liste
+            return queries
+
+        iterator_for_output["query_drop_table_input"] = iterator_for_output.apply(_build_drop_table_input_query, axis=1)
+        if level != 5:
+            # Exécution des requêtes de fusion
+            self.execute_queries_restitution(iterator_for_output, "query_drop_table_input")
 
     def build_restitution_level5_page2to5(self):
         # 1. Préparation : Création de la table des paramètres/itérateurs
@@ -1000,157 +1067,70 @@ class Barometre(SqlOperations):
         :return:
         """
 
-        # iterator = self.get_parameters_table(level=2)
-        # cols_to_drop = ['debut_ap', 'debut_mc', 'debut_mp', 'fin_ap', 'fin_mc', 'fin_mp']
-        # iterator.drop(cols_to_drop, axis=1, inplace=True)
-        # # Level 4 and under : 4 pass through in the query :
-        # iterator_ninf = iterator.query(" niveau != 5 ").copy()
-        # df = pd.DataFrame(dict(key=0,
-        #                        tableau=["A", "B", "C", "D"],
-        #                        passage=["01_NSUP", "02_NC", "03_NINF", "04_NCPP"])
-        #                   )
-        # page = pd.DataFrame(dict(key=0, page=range(2, 6)))
-        # df_iterator_ninf = pd.merge(iterator_ninf, df, on='key', how='outer').merge(page, on='key', how='outer')
-        # df_iterator_ninf.sort_values(['niveau', 'page', 'tableau', 'passage'], ascending=[False, True, True, True],
-        #                              inplace=True)
-
         # 1. Préparation : Création de la table des paramètres/itérateurs
         df_iterator = self.prepare_iterator_restitution(niveau=4)
 
-        # Define parameters to pass to the queries of level 4 and under
-        df_iterator_ninf['niveau_sup'] = df_iterator_ninf['niveau'] + 1
-        df_iterator_ninf['niveau_inf'] = df_iterator_ninf['niveau'] - 1
-        df_iterator_ninf['distinct'] = np.where(df_iterator_ninf['passage'] == '02_NC', 'DISTINCT', '')
+        # 2. Enrichissement : Ajout des colonnes de construction de requête SQL
+        # J'utilise la fonction enrich_iterator_restitution_level5 redéfinie comme une méthode de la classe (self)
+        df_iterator = self.enrich_iterator_restitution_level(df_iterator, level=4)
 
-        condlist = [df_iterator_ninf['passage'] == '01_NSUP',
-                    df_iterator_ninf['passage'] == '02_NC',
-                    df_iterator_ninf['passage'] == '03_NINF',
-                    df_iterator_ninf['passage'] == '04_NCPP']
-        choicelist = [
-            df_iterator_ninf.apply(lambda row: f"format_calculs_n{row.niveau_sup}_{row.period}_page{row.page} as f",
-                                   axis=1),
-            df_iterator_ninf.apply(lambda row: f"format_calculs_n{row.niveau}_{row.period}_page{row.page} as f",
-                                   axis=1),
-            df_iterator_ninf.apply(lambda row: f"format_calculs_n{row.niveau_inf}_{row.period}_page{row.page} as f",
-                                   axis=1),
-            df_iterator_ninf.apply(lambda row: f"format_calculs_n{row.niveau}_{row.period}_page{row.page} as f",
-                                   axis=1)]
-        df_iterator_ninf['table_input_level'] = np.select(condlist, choicelist)
+        # 3. Génération : Construction des requêtes SQL pour chaque ligne
+        df_iterator = self.generate_queries(df_iterator)
 
-        choicelist = [df_iterator_ninf.apply(
-            lambda row: f" join tab_ref_n{row.niveau_sup} as t on t.N{row.niveau_sup}_c_entite = f.entite",
-            axis=1),
-            df_iterator_ninf.apply(
-                lambda row: f" join tab_ref_n{row.niveau} as t on t.N{row.niveau}_c_entite = f.entite and t.tri=1",
-                axis=1),
-            df_iterator_ninf.apply(
-                lambda row: f" join tab_ref_n{row.niveau} as t on t.N{row.niveau_inf}_c_entite = f.entite",
-                axis=1),
-            '']
-        df_iterator_ninf['join'] = np.select(condlist, choicelist)
+        # 4. Exécution : Envoi des requêtes à la base de données
+        self.execute_queries_restitution(df_iterator, "query")
 
-        df_iterator_ninf['where'] = np.where(df_iterator_ninf['passage'] == '04_NCPP',
-                                             "where f.periode <> 'MC'",
-                                             "where f.periode = 'MC'")
+        # 5. Nettoyage : Fusion des tables temporaires et suppression
+        self.merge_and_cleanup(df_iterator, level=4)
 
-        df_iterator_ninf['entite'] = np.where(df_iterator_ninf['passage'].isin(['01_NSUP', '03_NINF']),
-                                              df_iterator_ninf.apply(lambda row: f" t.N{row.niveau}_c_entite as entite",
-                                                                     axis=1), 'f.entite')
+    def build_restitution_page6to9(self) -> None:
+        """
+                We base our loops on a lookup table
 
-        choicelist = [
-            df_iterator_ninf.apply(lambda row: f" ,t.N{row.niveau_sup}_lc_entite as short_label_entity", axis=1),
-            df_iterator_ninf.apply(lambda row: f" ,t.N{row.niveau}_lc_entite as short_label_entity", axis=1),
-            df_iterator_ninf.apply(lambda row: f" ,t.N{row.niveau_inf}_lc_entite as short_label_entity", axis=1),
-            ', NULL as short_label_entity']
-        df_iterator_ninf['short_label_entity'] = np.select(condlist, choicelist)
+                :return:
+                """
 
-        df_iterator_ninf['var_niveau'] = ',f.niveau'
+        # 1. Préparation : Création de la table des paramètres/itérateurs
+        df_iterator = self.get_parameters_table(level=2)
 
-        condlist_var = [df_iterator_ninf['page'] == 2,
-                        df_iterator_ninf['page'] == 3,
-                        df_iterator_ninf['page'] == 4,
-                        df_iterator_ninf['page'] == 5]
-        choicelist = [" ,f.var_1, f.var_2, f.var_3, f.var_4, f.var_5 ",
-                      " ,f.var_1, f.var_2, f.var_3, f.var_4 ",
-                      " ,f.var_1, f.var_2, f.var_3, f.var_4, f.var_5, f.var_6 ",
-                      " ,f.var_1, f.var_2, f.var_3, f.var_4, f.var_5, f.var_6, f.var_7, f.var_8, f.var_9 "
-                      ]
-        df_iterator_ninf['list_var'] = np.select(condlist_var, choicelist)
+        # 2. Construction et enrichissement de l'itérateur final
+        df_pages = pd.DataFrame({"key": 0, "page": range(6, 10)})
+        df_iterator = (df_iterator
+                       .merge(df_pages, on="key", how="outer")
+                       .sort_values(["niveau", "page"])
+                       )
 
-        choicelist = [', 0 as tri',
-                      ', 0 as tri',
-                      ', t.tri',
-                      ",CASE WHEN f.periode = 'MP' THEN 1 ELSE 2 END AS tri "]
-        df_iterator_ninf['tri'] = np.select(condlist, choicelist)
+        df_iterator['table_results_level'] = df_iterator.apply(
+            lambda row: f"n{row.niveau}_{row.period}_page{row.page} ", axis=1)
 
-        choicelist = [",'boldgrey' as _info_",
-                      ",'bold' as _info_",
-                      ',NULL as _info_',
-                      ",'bold' as _info_"
-                      ]
-        df_iterator_ninf['_info_'] = np.select(condlist, choicelist)
+        df_iterator["entite"] = "g.n" + df_iterator['niveau'].astype(str).str.strip() + "_c_entite"
 
-        choicelist = [', 0 as bloc',
-                      ', 1 as bloc',
-                      ', 2 as bloc',
-                      ', 3 as bloc']
-        df_iterator_ninf['bloc'] = np.select(condlist, choicelist)
+        df_iterator["list_var_fixe"] = ", g.col_name, d.moyenne_moitie_sup as reference, d.classe as Impact, " \
+                                       "g.valeurs_e, g.kpi"
 
-        df_iterator_ninf['tableau_part'] = df_iterator_ninf.apply(lambda row: f", '{row.tableau}' as tableau ", axis=1)
+        # Utilisation d'un dictionnaire de mapping
+        list_var_map = {
+            3: " ,g.var_5, g.var_6, g.var_7, g.var_8, g.var_9, g.var_10, g.var_11, g.var_12 ",
+            4: " ,g.var_5, g.var_6, g.var_7, g.var_8 ",
+            5: " ,g.var_8, g.var_9, g.var_10, g.var_11, g.var_12, g.var_13, g.var_14 ",
+        }
+        df_iterator['list_var'] = df_iterator['niveau'].map(list_var_map)
 
-        choicelist = [', NULL as insert_before',
-                      ", 'linebreak' as insert_before",
-                      ", case when t.tri = 1 then 'linebreak' else NULL end as insert_before",
-                      ",case when f.periode = 'MP' then 'linebreak' else NULL end as insert_before "
-                      ]
-        df_iterator_ninf['insert_before'] = np.select(condlist, choicelist)
+        df_iterator['table_input_level'] = df_iterator.apply(
+            lambda row: f"format_calculs_n{row.niveau}_{row.period}_page{row.page} as g", axis=1)
 
-        df_iterator_ninf['table_results_level'] = df_iterator_ninf.apply(
-            lambda row: f" N{row.niveau}_{row.period}_page{row.page}_tableau_{row.tableau}",
-            axis=1)
+        df_iterator['join'] = df_iterator.apply(
+            lambda row: f" join carte_tetraclasse_n{row.niveau} as d"
+                        f" on g.n{row.niveau}_c_entite = d.n{row.niveau}_c_entite and g.col_name = d.item", axis=1)
 
-        query_path = os.path.join(self.get_path_parameters()['sql_files'], 'restitution_queries')
-        # loop from level 2 to 5
-        for p in range(2, 6):
-            # read query and pass parameters
-            df_iterator_ninf['query'] = df_iterator_ninf.apply(
-                lambda row: self.sql_operations.read_query(query_path, 'restitution_page2to5.sql',
-                                                           format=row.to_dict()), axis=1)
-            # then execute queries
-            for query in df_iterator_ninf['query'].values.tolist():
-                self.sql_operations.execute_query(query)
+        # 3. Génération : Construction des requêtes SQL pour chaque ligne (niveau)
+        df_iterator = self.generate_queries(df_iterator, sql_query_to_read="restitution_page6to9")
 
-        # reshape dataframe for final query output table
-        iterator_for_output = (df_iterator_ninf
-                               .sort_values(['table_results_level'])
-                               .pivot(index=['niveau', 'period', 'page'], columns='passage',
-                                      values='table_results_level')
-                               )
-        iterator_for_output.reset_index(inplace=True)
-        iterator_for_output['query'] = iterator_for_output.apply(
-            lambda row: f"DROP TABLE IF EXISTS N{row.niveau}_{row.period}_page{row.page}; "
-                        f"SELECT * INTO N{row.niveau}_{row.period}_page{row.page} FROM {row['01_NSUP']} "
-                        f" UNION ALL SELECT * FROM {row['02_NC']} UNION ALL SELECT * FROM {row['03_NINF']} "
-                        f" UNION ALL SELECT * FROM {row['04_NCPP']} ", axis=1)
-        # then execute queries
-        for query in iterator_for_output['query'].values.tolist():
-            self.sql_operations.execute_query(query)
+        # 4. Exécution : Envoi des requêtes à la base de données
+        self.execute_queries_restitution(df_iterator, "query")
 
-        # cleaning tables
-        iterator_for_output['query_drop_table'] = iterator_for_output.apply(
-            lambda
-                row: f" DROP TABLE IF EXISTS {row['01_NSUP']} , {row['02_NC']}, {row['03_NINF']}, {row['04_NCPP']} ;",
-            axis=1)
-        for query in iterator_for_output['query_drop_table'].values.tolist():
-            self.sql_operations.execute_query(query)
 
-        iterator_for_output['query_drop_table_input'] = iterator_for_output.apply(
-            lambda row: f" DROP TABLE format_calculs_n{row.niveau}_{row.period}_page{row.page} ;", axis=1)
-        for query in iterator_for_output['query_drop_table_input'].values.tolist():
-            self.sql_operations.execute_query(query)
 
-    def build_integration_reference_llosa_page6to9(self) -> None:
-        pass
 
     def restitution(self):
         """
@@ -1174,10 +1154,9 @@ class Barometre(SqlOperations):
         print(f'Execute build_restitution_levelinf_page2to5 debut {datetime.datetime.now()}...........')
         self.build_restitution_levelinf_page2to5()
         print(f'Execute build_restitution_levelinf_page2to5 fin {datetime.datetime.now()}...........')
-
-        # print(f'Execute build_restitution_page6to9 debut {datetime.datetime.now()}...........')
-        # self.build_restitution_page6to9()
-        # print(f'Execute build_restitution_page6to9 fin {datetime.datetime.now()}...........')
+        print(f'Execute build_restitution_page6to9 debut {datetime.datetime.now()}...........')
+        self.build_restitution_page6to9()
+        print(f'Execute build_restitution_page6to9 fin {datetime.datetime.now()}...........')
 
 
 if __name__ == '__main__':
